@@ -2,4 +2,4 @@
 
 Gains, Losses, AncestralGenomes, Duplications, Evolution!
 
-![orthosim logo](https://github.com/lauriebelch/OrthogroupSimulation/blob/main/OrthoSim.png)
+![GLADE logo](https://github.com/lauriebelch/GLADE/blob/main/GLADE.png)
