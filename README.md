@@ -23,12 +23,12 @@ GLADE is a work in progress - proceed with caution!!!
 GLADE reconstructs the history of orthogroups — defined as sets of genes descended from a single gene in the most recent common ancestor — across a species tree.
 
 Given a complete OrthoFinder v3 run, GLADE:
--identifies where each orthogroup first appeared (gain)
--detects losses
--identifies gene duplication events
--reconstructs ancestral gene content at every internal node,
--quantifies orthogroup size changes along every branch,
--outputs complete evolutionary histories for all orthogroups.
+- Identifies where each orthogroup first appeared (gain)
+- Detects losses
+- Identifies gene duplication events
+- Reconstructs ancestral gene content at every internal node,
+- Quantifies orthogroup size changes along every branch,
+- Outputs complete evolutionary histories for all orthogroups.
 
 <p align="center">
 <img src="glade_workflow.png" alt="workflow" width="700"/>
@@ -49,20 +49,20 @@ I will add installation instructions for conda and manual
 GLADE produces a structured directory containing:
 
 1. Gains, Losses, and Duplications (GainsLossDuplication/)
--Gains.tsv — where each orthogroup first appeared
--Loss_speciation.tsv — orthogroup losses due to speciation
--Loss_postduplication.tsv — losses after duplication events
--Duplications.tsv — duplication events with support values
--Branch_statistics.tsv — event counts per species-tree branch
--*_bybranch.tsv — expanded lists of orthogroups per event type
--extant_OG_counts.tsv — gene counts in extant species
--OrthogroupBranchChange.tsv — size changes per branch
+- Gains.tsv — where each orthogroup first appeared
+- Loss_speciation.tsv — orthogroup losses due to speciation
+- Loss_postduplication.tsv — losses after duplication events
+- Duplications.tsv — duplication events with support values
+- Branch_statistics.tsv — event counts per species-tree branch
+- *_bybranch.tsv — expanded lists of orthogroups per event type
+- extant_OG_counts.tsv — gene counts in extant species
+- OrthogroupBranchChange.tsv — size changes per branch
 
 2. AncestralGenomes/
 
 One FASTA file per internal node containing reconstructed ancestral sequences
--AncestralGenomes.txt — summary statistics
--Ancestral_HOG_counts.csv — orthogroup copy numbers for all nodes
+- AncestralGenomes.txt — summary statistics
+- Ancestral_HOG_counts.csv — orthogroup copy numbers for all nodes
 
 ## Example data
 
