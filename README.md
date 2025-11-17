@@ -6,13 +6,25 @@ Gains, Losses, AncestralGenomes, Duplications, Evolution!
 
 GLADE is a work in progress - proceed with caution
 
+## Table of contents
+- [Installation](#What-is-GLADE)
+- [Installation](#Installation)
+- [How-to-use](#Simple-usage)
+- [Output files](#Output-files)
+- [Citation](#Citation)
+
 ## What is GLADE?
+
+<img src="glade_workflow.png" alt="HOGs" width="750"/>
 
 ## Installation
 
-## How do I use GLADE?
+## Simple usage
 
 ```python GLADE.py -f path/to/orthofinder/results```
 
-## What outputs do I get?
+## Output files
 
+## Citation
+
+coming soon to biorxiv
