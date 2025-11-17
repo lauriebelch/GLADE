@@ -7,10 +7,10 @@ GLADE is a Python tool for reconstructing the full evolutionary history of ortho
 It maps every event onto the species tree and produces rich output for comparative genomics.
 
 <p align="center">
-  <img src="https://github.com/lauriebelch/GLADE/blob/main/GLADE.png" width="30%">
+  <img src="https://github.com/lauriebelch/GLADE/blob/main/GLADE.png" width="50%">
 </p>
 
-GLADE is a work in progress - proceed with caution
+GLADE is a work in progress - proceed with caution!!!
 
 ## Table of contents
 - [Installation](#What-is-GLADE)
@@ -32,7 +32,9 @@ Given a complete OrthoFinder v3 run, GLADE:
 -quantifies orthogroup size changes along every branch,
 -outputs complete evolutionary histories for all orthogroups.
 
-<img src="glade_workflow.png" alt="HOGs" width="750"/>
+<p align="center">
+<img src="glade_workflow.png" alt="workflow" width="700"/>
+</p>
 
 ## Installation
 
