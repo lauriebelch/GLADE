@@ -13,7 +13,7 @@ It maps every event onto the species tree and produces rich output for comparati
 GLADE is a work in progress - proceed with caution!!!
 
 ## Table of contents
-- [Installation](#What-is-GLADE)
+- [What is GLADE?](#What-is-GLADE)
 - [Installation](#Installation)
 - [How-to-use](#Simple-usage)
 - [Output files](#Output-files)
@@ -67,6 +67,8 @@ One FASTA file per internal node containing reconstructed ancestral sequences
 -Ancestral_HOG_counts.csv — orthogroup copy numbers for all nodes
 
 ## Example data
+
+Will include some simple example data for testing
 
 ## Citation
 
