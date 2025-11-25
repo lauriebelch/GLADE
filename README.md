@@ -70,9 +70,10 @@ One FASTA file per internal node containing reconstructed ancestral sequences
 
 Unzip the ExampleData.zip file, which contains an OrthoFinder results directory on a small dataset.
 Then run:
-'''
+
+```
 python GLADE.py -f ExampleData/OrthoFinder/Results_ExampleDataGLADE/
-'''
+```
 
 ## Citation
 
