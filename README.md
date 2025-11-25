@@ -38,7 +38,9 @@ Given a complete OrthoFinder v3 run, GLADE:
 
 GLADE requires Python 3.9 or later
 
-I will add installation instructions for conda and manual
+GLADE requires the same dependencies as OrthoFinder. We reccommend that you run GLADE in an orthofinder conda environment.
+
+See the OrthoFinder github for details on how to set this up https://github.com/OrthoFinder/OrthoFinder?tab=readme-ov-file#installation
 
 ## Simple usage
 
@@ -66,7 +68,11 @@ One FASTA file per internal node containing reconstructed ancestral sequences
 
 ## Example data
 
-Will include some simple example data for testing
+Unzip the ExampleData.zip file, which contains an OrthoFinder results directory on a small dataset.
+Then run:
+'''
+python GLADE.py -f ExampleData/OrthoFinder/Results_ExampleDataGLADE/
+'''
 
 ## Citation
 
