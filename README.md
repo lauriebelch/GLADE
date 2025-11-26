@@ -9,8 +9,11 @@ GLADE is a Python tool for reconstructing the full evolutionary history of ortho
 </p>
 
 GLADE is a work in progress - proceed with caution!!!
+
 If you are running GLADE on an OrthoFinder assign run - you need to add the proteomes from the core run to the assign results directory
+
 e.g. cd to core/WorkingDirectory and cp *.fa to the assign/WorkingDirectory
+
 We are working on a fix for this.
 
 ## Table of contents
