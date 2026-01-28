@@ -32,7 +32,7 @@ Given a complete OrthoFinder v3 run, GLADE:
 - Outputs complete evolutionary histories for all orthogroups.
 
 <p align="center">
-<img src="glade_workflow.png" alt="workflow" width="700"/>
+<img src="glade_workfloww.png" alt="workflow" width="700"/>
 </p>
 
 ## Installation
