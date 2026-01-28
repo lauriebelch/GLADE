@@ -1,6 +1,6 @@
 # GLADE
 
-Gains, Losses, AncestralGenomes, Duplications, Evolution!
+GLADE: Accurate inference of Gains, Losses, Ancestral genomes, and Duplication Events for comparative genomics
 
 GLADE is a Python tool for reconstructing the full evolutionary history of orthogroups — including gene gains, losses, duplications, and ancestral gene repertoires — using only an OrthoFinder v3 results directory as input. GLADE maps every event onto the species tree and produces rich output for comparative genomics.
 
