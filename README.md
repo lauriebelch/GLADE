@@ -84,6 +84,5 @@ python GLADE.py -f ExampleData/OrthoFinder/Results_ExampleDataGLADE/
 
 ## Citation
 
-coming soon to biorxiv
-Belcher L.J. et al. (2025) GLADE
+Belcher L.J. & Kelly S. (2025) GLADE: Accurate inference of Gains, Losses, Ancestral genomes, and Duplication Events for comparative genomics. [bioRxiv](https://www.biorxiv.org/content/10.64898/2026.01.27.702036v1)
 
