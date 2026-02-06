@@ -104,7 +104,7 @@ def main():
     print(f"---Finished! This run took {minutes} minutes {seconds} seconds.")
     print("---Files have landed in", os.path.join(ortho_folder_path, ""))
     print("---Thank you for choosing Orthofinder and GLADE.") 
-    print("---GLADE: Belcher L. & Kelly S. (2025), bioRxiv")
+    print("---GLADE: Belcher L. & Kelly S. (2026), bioRxiv https://doi.org/10.64898/2026.01.27.702036")
     print("---OrthoFinder v3: Emms D.M., Liu Y., Belcher L., Holmes J. & Kelly S. (2025), bioRxiv https://doi.org/10.1101/2025.07.15.664860")
 
 if __name__ == "__main__":
