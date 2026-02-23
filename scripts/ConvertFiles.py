@@ -7,7 +7,9 @@ import math
 import multiprocessing as mp
 import tempfile
 import ete3
+import shutil
 
+_NUM_TOKEN_RE = re.compile(r'^[0-9]+(\.[0-9]+)?([eE][+\-]?[0-9]+)?$')
 
 def File_Dictionaries(Input):
     """
@@ -107,6 +109,55 @@ def File_Dictionaries(Input):
     # Return dictionaries for use in next conversion steps
     return SpeciesDict, SequenceIDsDict
 
+def Build_OG_Leaf_Map(Input, SpeciesDict, SequenceIDsDict):
+    """
+    For -X runs: build per-orthogroup mapping from gene ID to coded IDs, using Orthogroups/Orthogroups.tsv
+    Returns:
+        OGLeafMap: dict[og_name] -> dict[raw_gene] -> coded_gene
+    """
+    OG_Path = os.path.join(Input, "Orthogroups", "Orthogroups.tsv")
+    OGLeafMap = {}
+    with open(OG_Path) as og_file:
+        header = next(og_file).rstrip("\n")
+        colnames = header.split("\t")[1:]  # species names
+        # Convert species names -> species codes (same as in File_Dictionaries)
+        try:
+            species_codes = [SpeciesDict[s] for s in colnames]
+        except KeyError as e:
+            raise KeyError(
+                f"Species name {e!s} from Orthogroups.tsv header not found in SpeciesDict. "
+                f"Header species: {colnames}"
+            )
+        for line in og_file:
+            if not line.startswith("OG"):
+                continue
+            parts = line.rstrip("\n").split("\t")
+            og_name = parts[0]
+            species_fields = parts[1:]
+            og_map = {}
+            for pos, field in enumerate(species_fields):
+                if field == "":
+                    continue
+                sp_code = species_codes[pos]
+                genes = [g for g in field.split(", ") if g != ""]
+                for gene in genes:
+                    try:
+                        coded = SequenceIDsDict[sp_code][gene]
+                    except KeyError:
+                        raise KeyError(
+                            f"Gene '{gene}' not found in SequenceIDs for species code '{sp_code}'. "
+                            f"OG: {og_name}, species column: {colnames[pos]}"
+                        )
+                    # Guard against weird duplicates inside the same OG
+                    if gene in og_map and og_map[gene] != coded:
+                        raise ValueError(
+                            f"Ambiguous gene '{gene}' within {og_name}: "
+                            f"{og_map[gene]} vs {coded}"
+                        )
+                    og_map[gene] = coded
+            OGLeafMap[og_name] = og_map
+    return OGLeafMap
+
 def Convert_Orthogroups_TXT(Input, SequenceIDsDict):
     """
     Convert Orthogroups.txt (1 OG per line, gene list format)
@@ -179,97 +230,98 @@ def convert_leaf(full_leaf, SpeciesDict, SequenceIDsDict):
     return SequenceIDsDict[species_code][gene]
 
 def _gene_tree_worker(args):
-    chunk_file, out_file, SpeciesDict, SequenceIDsDict = args
-
+    chunk_file, out_file, SpeciesDict, SequenceIDsDict, used_X, OGLeafMap = args
     with open(chunk_file) as infile, open(out_file, "w") as outfile:
         for line in infile:
             line = line.strip()
             if not line:
                 continue
-
             og_name, tree = line.split(":", 1)
             tree = tree.strip()
-
             leaves = set(re.findall(r"[A-Za-z0-9_\|\.\-]+", tree))
-
+            # Fetch per-OG map once (only used in -X mode)
+            og_map = None
+            if used_X:
+                og_map = OGLeafMap.get(og_name)
+                if og_map is None:
+                    raise KeyError(
+                        f"OG '{og_name}' not found in Orthogroups.tsv mapping. "
+                        f"Cannot convert -X gene tree."
+                    )
             for leaf in sorted(leaves, key=len, reverse=True):
-                try:
-                    new = convert_leaf(leaf, SpeciesDict, SequenceIDsDict)
-                except KeyError:
-                    if leaf.startswith("n"):
+                # Skip internal node labels
+                if leaf.startswith("n"):
+                    continue
+                # Skip numeric tokens (branch lengths/support values)
+                if _NUM_TOKEN_RE.match(leaf):
+                    continue
+                if used_X:
+                    if leaf in og_map:
+                        new = og_map[leaf]
+                    else:
+                        # If it looks like a real gene label (letters or |), treat as an error.
+                        # Otherwise ignore (acts like "leave unchanged").
+                        if re.search(r"[A-Za-z\|]", leaf):
+                            raise KeyError(
+                                f"Leaf '{leaf}' not found in OG map for {og_name} "
+                                f"(OrthoFinder was run with -X)."
+                            )
                         continue
-                    raise
-
+                else:
+                    try:
+                        new = convert_leaf(leaf, SpeciesDict, SequenceIDsDict)
+                    except KeyError:
+                        # Keep your existing behavior
+                        raise
                 tree = tree.replace(leaf, new)
-
             outfile.write(f"{og_name}: {tree}\n")
 
-
-def Convert_Gene_Trees(Input, SpeciesDict, SequenceIDsDict, n_threads):
+def Convert_Gene_Trees(Input, SpeciesDict, SequenceIDsDict, n_threads, used_X=False, OGLeafMap=None):
     """
     Convert Resolved Gene Trees using simple temp-file multiprocessing.
+    If used_X=True, converts leaves using OGLeafMap[og_name][leaf].
     """
-
     tree_in  = os.path.join(Input, "Resolved_Gene_Trees", "Resolved_Gene_Trees.txt")
     tree_out = os.path.join(Input, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt")
-
     if os.path.exists(tree_out):
         os.remove(tree_out)
-
-    # Read all lines once
     with open(tree_in) as f:
         lines = [l for l in f if l.strip()]
-
     if not lines:
         open(tree_out, "w").close()
         return
-
+    if used_X and OGLeafMap is None:
+        raise ValueError("used_X=True but OGLeafMap was not provided")
     n_threads = max(1, min(n_threads, mp.cpu_count()))
     chunk_size = math.ceil(len(lines) / n_threads)
-
-    # Temp directory for chunks
     tmp_dir = tempfile.mkdtemp(prefix="glade_trees_")
-
     chunk_files = []
     out_files   = []
-
-    # Write chunk input files
-    for i in range(n_threads):
-        start = i * chunk_size
-        end   = start + chunk_size
-        chunk = lines[start:end]
-
-        if not chunk:
-            break
-
-        chunk_path = os.path.join(tmp_dir, f"chunk_{i}.txt")
-        out_path   = os.path.join(tmp_dir, f"chunk_{i}.out")
-
-        with open(chunk_path, "w") as f:
-            f.writelines(chunk)
-
-        chunk_files.append(chunk_path)
-        out_files.append(out_path)
-
-    # Launch workers
-    args = [
-        (chunk_files[i], out_files[i], SpeciesDict, SequenceIDsDict)
-        for i in range(len(chunk_files))
-    ]
-
-    with mp.Pool(processes=len(chunk_files)) as pool:
-        pool.map(_gene_tree_worker, args)
-
-    # Merge outputs in correct order
-    with open(tree_out, "w") as final_out:
-        for out_file in out_files:
-            with open(out_file) as f:
-                final_out.writelines(f)
-
-    # Cleanup temp files
-    for f in chunk_files + out_files:
-        os.remove(f)
-    os.rmdir(tmp_dir)
+    try:
+        for i in range(n_threads):
+            start = i * chunk_size
+            end   = start + chunk_size
+            chunk = lines[start:end]
+            if not chunk:
+                break
+            chunk_path = os.path.join(tmp_dir, f"chunk_{i}.txt")
+            out_path   = os.path.join(tmp_dir, f"chunk_{i}.out")
+            with open(chunk_path, "w") as f:
+                f.writelines(chunk)
+            chunk_files.append(chunk_path)
+            out_files.append(out_path)
+        args = [
+            (chunk_files[i], out_files[i], SpeciesDict, SequenceIDsDict, used_X, OGLeafMap)
+            for i in range(len(chunk_files))
+        ]
+        with mp.Pool(processes=len(chunk_files)) as pool:
+            pool.map(_gene_tree_worker, args)
+        with open(tree_out, "w") as final_out:
+            for out_file in out_files:
+                with open(out_file) as f:
+                    final_out.writelines(f)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 def Convert_Species_Tree(Input, SpeciesDict):
     """
@@ -305,14 +357,39 @@ def Convert_Species_Tree(Input, SpeciesDict):
     # Write the numeric version — internal node labels remain untouched
     tree.write(outfile=st_out, format=1)
 
+# check for -X flag
+_X_FLAG_RE = re.compile(r'(^|\s)-X(\s|$)')
 
+def orthofinder_used_X(ortho_folder_path):
+    log_path = os.path.join(ortho_folder_path, "Log.txt")
+    if not os.path.exists(log_path):
+        raise FileNotFoundError(f"Log.txt not found in {ortho_folder_path}")
+    with open(log_path) as f:
+        lines = f.readlines()
+    if len(lines) < 2:
+        raise ValueError("Log.txt does not contain a command line")
+    line = lines[1].strip()
+    if not line.startswith("Command Line:"):
+        raise ValueError("Unexpected Log.txt format (no 'Command Line:' on line 2)")
+    cmd = line[len("Command Line:"):]
+    return bool(_X_FLAG_RE.search(cmd))
 
 
 def main(ortho_folder_path, n_threads):
     parent_output_file = os.path.join(ortho_folder_path, "WorkingDirectory", "GladeWD","GLADEfiles.tsv")
     os.makedirs(os.path.dirname(parent_output_file), exist_ok=True)
+    used_X = orthofinder_used_X(ortho_folder_path)
     SpeciesDict, SequenceIDsDict = File_Dictionaries(ortho_folder_path)
     Convert_Orthogroups_TXT(ortho_folder_path, SequenceIDsDict)
-    Convert_Gene_Trees(ortho_folder_path, SpeciesDict, SequenceIDsDict, n_threads)
+    OGLeafMap = None
+    if used_X:
+        OGLeafMap = Build_OG_Leaf_Map(ortho_folder_path, SpeciesDict,SequenceIDsDict)
+    Convert_Gene_Trees(
+        ortho_folder_path,
+        SpeciesDict,
+        SequenceIDsDict,
+        n_threads,
+        used_X=used_X,
+        OGLeafMap=OGLeafMap
+    )
     Convert_Species_Tree(ortho_folder_path, SpeciesDict)
-
