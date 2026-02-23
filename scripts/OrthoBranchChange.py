@@ -36,7 +36,7 @@ def process_data_item(d, ortho_dict, BS_dict):
     
     d['family_size'] = NA_INT(family_size)
     d['parent_size'] = NA_INT(parent_size)
-    d['Branch_length'] = float(Branch_length) if Branch_length != "NA" else "NA"
+    d['Branch_length'] = float(Branch_length) if Branch_length not in ("NA", "", None) else "NA"
     
     if d['family_size'] == "NA" or d['parent_size'] == "NA":
         d['change'] = 'NA'
