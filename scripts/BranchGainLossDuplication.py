@@ -9,7 +9,7 @@ Created on Mon May 20 11:04:20 2024
 ## this script has functions that calculate gains, losses, and dupliations on branches
 
 # import libraries
-import ete3
+import ete4
 import os
 import csv
 import sys
@@ -26,9 +26,9 @@ def SpeciesTreeTraverse(species_tree):
     node_leaves = {}
     for node in species_tree.traverse("postorder"):
         # record leaves
-        node_leaves[node.name] = {'leaves': [leaf.name for leaf in node.get_leaves()]}
+        node_leaves[node.name] = {'leaves': [leaf.name for leaf in node.leaves()]}
         # Record child nodes
-        if node.is_leaf():
+        if node.is_leaf:
             # Leaf nodes have no children
             node_leaves[node.name]['children'] = []
         else:
@@ -48,12 +48,15 @@ def SpeciesTreeTraverse(species_tree):
             if node:
                 # Naming the branch as 'parentnode__childnode'
                 node_name = f"root___{node.name}" # special case
-                if not node.is_root():
+                if not node.is_root:
                     node_name = f"{node.up.name}___{node.name}"
                 node.name = node_name
+                bl = node.dist
+                if bl in ("", None):
+                    bl = 0.0
                 # record branch length, and define other variables
                 BRANCHES[node_name] = {
-                    "branch_length": node.dist,
+                    "branch_length": bl,
                     "N_gains": 0,
                     "Orthogroups_gained": [],
                     "N_speciation_losses": [],
@@ -107,7 +110,8 @@ def main(ortho_folder_path, n_threads):
     species_tree_path = os.path.join(
         ortho_folder_path, "WorkingDirectory", "GladeWD", "SpeciesTree_rooted_node_labels.txt"
     )
-    species_tree = ete3.Tree(species_tree_path, quoted_node_names=True, format=1)
+    with open(species_tree_path) as fh:
+        species_tree = ete4.Tree(fh, parser=1)
     species_tree.name = "N0"
     
     # traverse species tree and extract info

@@ -7,7 +7,7 @@ Created on Mon Jul 15 13:07:56 2024
 """
 
 import csv
-import ete3
+import ete4
 import os
 import re
 import time
@@ -54,7 +54,7 @@ def ListDictToTSV(data, filename, column_order=None):
 def SpeciesTreeToDataFrame(species_tree):
     data = []
     for node in species_tree.traverse():
-        if node.is_leaf():
+        if node.is_leaf:
             # leaf has itself as both children
             leaf = node.name
             data.append({
@@ -63,8 +63,8 @@ def SpeciesTreeToDataFrame(species_tree):
                 "Child2": [leaf]
             })
             continue
-        child1 = node.children[0].get_leaf_names()
-        child2 = node.children[1].get_leaf_names()
+        child1 = list(node.children[0].leaf_names())
+        child2 = list(node.children[1].leaf_names())
         data.append({
             "Node": node.name,
             "Child1": child1,
@@ -84,10 +84,10 @@ def MapGeneSpeciesTree(gene_tree, species_tree, species_names):
     gene_tree.name = "n0"
     mapping = []
     for node in gene_tree.traverse():
-        if node.is_leaf():
+        if node.is_leaf:
             continue
         # species in this gene-tree node
-        leaves = { leaf.name.split("_")[0] for leaf in node.get_leaves() }
+        leaves = { leaf.name.split("_")[0] for leaf in node.leaves() }
         # find the species_tree node whose two children both intersect leaves
         for row in s_df:
             child1 = set(row["Child1"])
@@ -119,11 +119,11 @@ def FindDuplications(gene_tree, species_tree, species_names):
     # Convert mapping list to dict for quick lookup
     mapdict = { m["Gene Node"]: m["Species Node"] for m in mapping }
     for node in gene_tree.traverse("postorder"):
-        if node.is_leaf():
+        if node.is_leaf:
             continue
         # species in children
-        leaves1 = { leaf.name.split("_")[0] for leaf in node.children[0].get_leaves() }
-        leaves2 = { leaf.name.split("_")[0] for leaf in node.children[1].get_leaves() }
+        leaves1 = { leaf.name.split("_")[0] for leaf in node.children[0].leaves() }
+        leaves2 = { leaf.name.split("_")[0] for leaf in node.children[1].leaves() }
         # duplication if overlap
         shared = leaves1 & leaves2
         if not shared:
@@ -131,18 +131,18 @@ def FindDuplications(gene_tree, species_tree, species_names):
         # species node
         species_node = mapdict.get(node.name)
         # compute support
-        st_node = species_tree.search_nodes(name=species_node)[0]
-        expected_species = { leaf.name for leaf in st_node.get_leaves() }
+        st_node = next(species_tree.search_nodes(name=species_node))
+        expected_species = { leaf.name for leaf in st_node.leaves() }
         support = len(shared) / len(expected_species)
         # label event
         if support >= 0.5:
-            node.add_features(duplication_label="D")
+            node.add_props(duplication_label="D")
         else:
-            node.add_features(low_support_duplication_label="lD")
+            node.add_props(low_support_duplication_label="lD")
         duplications.append({
             "genetree_node": node.name,
-            "leaves1": node.children[0].get_leaf_names(),
-            "leaves2": node.children[1].get_leaf_names(),
+            "leaves1": list(node.children[0].leaf_names()),
+            "leaves2": list(node.children[1].leaf_names()),
             "speciestree_node": species_node,
             "support": support
         })

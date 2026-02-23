@@ -6,7 +6,7 @@ import re
 import math
 import multiprocessing as mp
 import tempfile
-import ete3
+import ete4
 import shutil
 
 _NUM_TOKEN_RE = re.compile(r'^[0-9]+(\.[0-9]+)?([eE][+\-]?[0-9]+)?$')
@@ -335,10 +335,11 @@ def Convert_Species_Tree(Input, SpeciesDict):
     st_out = os.path.join(Input, "WorkingDirectory", "GladeWD", "SpeciesTree_rooted_node_labels.txt")
 
     # Load original tree with ETE — safest method
-    tree = ete3.Tree(st_in, quoted_node_names=True, format=1)
+    with open(st_in) as fh:
+        tree = ete4.Tree(fh, parser=1)
 
     # Replace leaf names using SpeciesDict
-    for leaf in tree.iter_leaves():
+    for leaf in tree.leaves():
 
         # Orthofinder sometimes outputs leaf names with dots; normalize like SpeciesDict
         leaf_clean = os.path.splitext(leaf.name.replace(".", "_"))[0]
@@ -355,7 +356,7 @@ def Convert_Species_Tree(Input, SpeciesDict):
     os.makedirs(os.path.dirname(st_out), exist_ok=True)
 
     # Write the numeric version — internal node labels remain untouched
-    tree.write(outfile=st_out, format=1)
+    tree.write(outfile=st_out, parser=1)
 
 # check for -X flag
 _X_FLAG_RE = re.compile(r'(^|\s)-X(\s|$)')
