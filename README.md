@@ -8,8 +8,6 @@ GLADE is a Python tool for reconstructing the full evolutionary history of ortho
   <img src="https://github.com/lauriebelch/GLADE/blob/main/GLADE.png" width="50%">
 </p>
 
-GLADE is a work in progress - proceed with caution!!!
-
 
 ## Table of contents
 - [What is GLADE?](#What-is-GLADE)
