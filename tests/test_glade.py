@@ -1,0 +1,220 @@
+# -*- coding: utf-8 -*-
+"""
+Tests for GLADE, run on the ExampleData OrthoFinder results.
+
+The edge-case tests copy ExampleData and edit it to recreate reported problems:
+  - species names containing dots
+  - gene IDs containing ( ) and +   (OrthoFinder writes ( ) as _ in trees/Orthogroups.tsv)
+  - species names starting with "n"
+  - a polytomy in the species tree
+  - gene-tree polytomies (compared against OrthoFinder's own duplication output)
+  - non-deterministic ancestral gene sets
+
+Run from the repository root with:   pytest -v tests/
+"""
+
+import csv
+import os
+import shutil
+import subprocess
+import sys
+import zipfile
+
+import pytest
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+GLADE = os.path.join(REPO, "scripts", "GLADE.py")
+RESULTS = "ExampleData/OrthoFinder/Results_ExampleDataGLADE"
+
+csv.field_size_limit(sys.maxsize)
+
+
+#### helper functions ########################################################
+
+def make_example(tmp_path):
+    # unzip a fresh copy of ExampleData and return the OrthoFinder results folder
+    with zipfile.ZipFile(os.path.join(REPO, "ExampleData.zip")) as z:
+        z.extractall(tmp_path)
+    return os.path.join(tmp_path, RESULTS)
+
+
+def run_glade(folder, *extra):
+    cmd = [sys.executable, GLADE, "-f", folder, "-t", "2"] + list(extra)
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def replace_in_files(folder, old, new, files):
+    # replace text in some OrthoFinder output files (like editing them with sed)
+    for f in files:
+        path = os.path.join(folder, f)
+        with open(path) as fh:
+            text = fh.read()
+        with open(path, "w") as fh:
+            fh.write(text.replace(old, new))
+
+
+# the OrthoFinder files that GLADE reads
+OF_FILES = ["WorkingDirectory/SpeciesIDs.txt",
+            "Orthogroups/Orthogroups.tsv",
+            "Species_Tree/SpeciesTree_rooted_node_labels.txt",
+            "Resolved_Gene_Trees/Resolved_Gene_Trees.txt"]
+
+
+def rename_species(folder, old, new):
+    replace_in_files(folder, old, new, OF_FILES)
+
+
+def read_tsv(path):
+    with open(path) as fh:
+        return list(csv.DictReader(fh, delimiter="\t"))
+
+
+def count_rows(folder, name):
+    return len(read_tsv(os.path.join(folder, "GainsLossDuplication", name)))
+
+
+def all_leaves_converted(folder):
+    # every leaf in GLADE's converted gene trees should look like "<species code>_<gene code>"
+    import ete4
+    path = os.path.join(folder, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt")
+    with open(path) as fh:
+        for line in fh:
+            og, newick = line.split(":", 1)
+            for leaf in ete4.Tree(newick.strip(), parser=1).leaves():
+                parts = leaf.name.split("_")
+                if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+                    return False
+    return True
+
+
+#### tests ####################################################################
+
+def test_example_data(tmp_path):
+    # ExampleData: 338 duplications and 29 speciation losses
+    folder = make_example(tmp_path)
+    out = run_glade(folder)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert count_rows(folder, "Duplications.tsv") == 338
+    assert count_rows(folder, "Loss_speciation.tsv") == 29
+    assert count_rows(folder, "Gains.tsv") == 332
+
+
+def test_duplications_match_orthofinder(tmp_path):
+    # GLADE duplication gene sets should match OrthoFinder's own
+    # (Gene_Duplication_Events/Duplications.tsv). They reported 330/338 matching,
+    # because GLADE only used the first two child clades at gene-tree polytomies.
+    folder = make_example(tmp_path)
+    out = run_glade(folder)
+    assert out.returncode == 0, out.stdout + out.stderr
+
+    of = {}
+    for row in read_tsv(os.path.join(folder, "Gene_Duplication_Events", "Duplications.tsv")):
+        genes = set(row["Genes 1"].split(", ")) | set(row["Genes 2"].split(", "))
+        of[(row["Orthogroup"], row["Gene Tree Node"])] = genes
+
+    glade = {}
+    for row in read_tsv(os.path.join(folder, "GainsLossDuplication", "Duplications.tsv")):
+        genes = set(row["leaves1"].split(",")) | set(row["leaves2"].split(","))
+        glade[(row["Orthogroup"], row["genetree_node"])] = genes
+
+    same = sum(1 for key in of if glade.get(key) == of[key])
+    print(f"duplication gene sets identical to OrthoFinder: {same}/{len(of)}")
+    assert same == len(of)
+
+
+def test_species_name_with_dots(tmp_path):
+    # species names with dots (e.g. Rozella.allomycis)
+    folder = make_example(tmp_path)
+    rename_species(folder, "Mycoplasma_agalactiae", "Mycoplasma.agalactiae")
+    out = run_glade(folder)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert all_leaves_converted(folder)
+    assert count_rows(folder, "Duplications.tsv") == 338
+    assert count_rows(folder, "Loss_speciation.tsv") == 29
+
+
+def test_species_name_starting_with_n(tmp_path):
+    # species names starting with a lower-case "n" (e.g. nicotiana_...) must still be converted
+    folder = make_example(tmp_path)
+    rename_species(folder, "Mycoplasma_agalactiae", "nicotiana_agalactiae")
+    out = run_glade(folder)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert all_leaves_converted(folder)
+    assert count_rows(folder, "Loss_speciation.tsv") == 29
+
+
+def test_gene_ids_with_special_characters(tmp_path):
+    # OrthoFinder writes ( and ) as _ in Orthogroups.tsv and the gene trees,
+    # but not in SequenceIDs.txt. Also '+' in gene IDs (strand-annotated IDs).
+    folder = make_example(tmp_path)
+    changes = [("gi|31541247|gb|AAP56549.1|", "gi|31541247|gb|AAP56549.1|(minus)", "gi|31541247|gb|AAP56549.1|_minus_"),
+               ("gi|284811961|gb|ADB96864.1|", "gi|284811961|gb|ADB96864.1|+", "gi|284811961|gb|ADB96864.1|+")]
+    for old, in_seqids, in_trees in changes:
+        replace_in_files(folder, old, in_seqids, ["WorkingDirectory/SequenceIDs.txt"])
+        replace_in_files(folder, old, in_trees, ["Orthogroups/Orthogroups.tsv", "Orthogroups/Orthogroups.txt",
+                                                 "Resolved_Gene_Trees/Resolved_Gene_Trees.txt"])
+    out = run_glade(folder)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert all_leaves_converted(folder)
+    assert count_rows(folder, "Duplications.tsv") == 338
+
+
+def test_species_tree_polytomy_stops_with_error(tmp_path):
+    # a polytomy in the species tree made GLADE silently lose most
+    # speciation losses (29 -> 6). GLADE should now stop with a clear message.
+    folder = make_example(tmp_path)
+    tree_file = os.path.join(folder, "Species_Tree", "SpeciesTree_rooted_node_labels.txt")
+    with open(tree_file) as fh:
+        tree = fh.read()
+    # collapse node N1 into the root: ((A,B)N1,(C,D)N2)N0; -> (A,B,(C,D)N2)N0;
+    import ete4
+    t = ete4.Tree(tree, parser=1)
+    n1 = next(t.search_nodes(name="N1"))
+    n1.delete()
+    with open(tree_file, "w") as fh:
+        fh.write(t.write(parser=1, format_root_node=True))
+    out = run_glade(folder)
+    assert out.returncode != 0
+    assert "bifurcating" in (out.stdout + out.stderr)
+
+
+def test_same_seed_same_output(tmp_path):
+    # ancestral gene sets were different on every run.
+    # Same seed -> identical output, also with a different number of threads.
+    folders = []
+    for i, threads in enumerate(["2", "2", "4"]):
+        folder = make_example(os.path.join(tmp_path, str(i)))
+        out = subprocess.run([sys.executable, GLADE, "-f", folder, "-t", threads, "--seed", "7"],
+                             capture_output=True, text=True)
+        assert out.returncode == 0, out.stdout + out.stderr
+        folders.append(folder)
+    for name in ["N0.fasta", "N1.fasta", "N2.fasta", "AncestralGenomes.txt"]:
+        files = [open(os.path.join(f, "AncestralGenomes", name)).read() for f in folders]
+        assert files[0] == files[1] == files[2], name
+    for name in ["OrthogroupBranchChange.tsv", "Duplications.tsv", "Loss_speciation.tsv"]:
+        files = [open(os.path.join(f, "GainsLossDuplication", name)).read() for f in folders]
+        assert files[0] == files[1] == files[2], name
+
+
+def test_output_files_where_readme_says(tmp_path):
+    # some outputs stayed in WorkingDirectory/GladeWD/ instead of the
+    # locations given in the README
+    folder = make_example(tmp_path)
+    out = run_glade(folder)
+    assert out.returncode == 0, out.stdout + out.stderr
+    for name in ["Gains.tsv", "Loss_speciation.tsv", "Loss_postduplication.tsv", "Duplications.tsv",
+                 "Branch_statistics.tsv", "Gains_bybranch.tsv", "Loss_speciation_bybranch.tsv",
+                 "Duplications_bybranch.tsv", "Loss_postduplication_bybranch.tsv",
+                 "extant_OG_counts.tsv", "OrthogroupBranchChange.tsv"]:
+        assert os.path.exists(os.path.join(folder, "GainsLossDuplication", name)), name
+    for name in ["AncestralGenomes.txt", "Ancestral_HOG_counts.csv", "N0.fasta"]:
+        assert os.path.exists(os.path.join(folder, "AncestralGenomes", name)), name
+    # species names (not numeric codes) in the extant counts
+    with open(os.path.join(folder, "GainsLossDuplication", "extant_OG_counts.tsv")) as fh:
+        assert "Mycoplasma_agalactiae" in fh.readline()
+
+
+def test_version_flag():
+    out = subprocess.run([sys.executable, GLADE, "--version"], capture_output=True, text=True)
+    assert out.returncode == 0
+    assert "GLADE" in out.stdout and "1.0.0" in out.stdout
