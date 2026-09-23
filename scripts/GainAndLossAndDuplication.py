@@ -98,12 +98,17 @@ def FindLossesAfterDuplications(gene_tree, species_tree, species_names):
     for node in gene_tree.traverse():
         if node.is_leaf:
             continue
-        if "duplication_label" not in node.props and "low_support_duplication_label" not in node.props:
+        # only look after duplications with support >= 0.5 (the ones counted as duplications)
+        if "duplication_label" not in node.props:
+            continue
+        # at a gene-tree polytomy we can't tell the order of duplications and losses, so skip it
+        # (the duplication itself, with all its genes, is still reported in Duplications.tsv)
+        if len(node.children) != 2:
             continue
 
         # species under each child
-        # (a gene-tree node can have more than 2 children if there is a polytomy)
-        child_species = [{leaf.name.split("_")[0] for leaf in child.leaves()} for child in node.children]
+        leaves1 = {leaf.name.split("_")[0] for leaf in node.children[0].leaves()}
+        leaves2 = {leaf.name.split("_")[0] for leaf in node.children[1].leaves()}
 
         # species node this gene-tree node maps to
         species_node = mapdict[node.name]
@@ -114,21 +119,25 @@ def FindLossesAfterDuplications(gene_tree, species_tree, species_names):
                 expected_species = record["Child1"] + record["Child2"]
                 break
 
-        # a species is lost in a child if it is in one of the other children but not this one
-        # (with 2 children this is the same as IdentifyGeneLoss)
-        for i in range(len(node.children)):
-            other_species = set()
-            for j in range(len(node.children)):
-                if j != i:
-                    other_species = other_species | child_species[j]
-            for lost in expected_species:
-                if lost in other_species and lost not in child_species[i]:
-                    loss_records.append({
-                        "Focal Node": node.name,
-                        "Lost Species": lost,
-                        "Child Node": node.children[i].name,
-                        "Species Node": species_node
-                    })
+        loss_info = IdentifyGeneLoss(leaves1, leaves2, expected_species)
+
+        # LOST IN CHILD1
+        for lost in loss_info["loss_to_child1"]:
+            loss_records.append({
+                "Focal Node": node.name,
+                "Lost Species": lost,
+                "Child Node": node.children[0].name,
+                "Species Node": species_node
+            })
+
+        # LOST IN CHILD2
+        for lost in loss_info["loss_to_child2"]:
+            loss_records.append({
+                "Focal Node": node.name,
+                "Lost Species": lost,
+                "Child Node": node.children[1].name,
+                "Species Node": species_node
+            })
 
     return loss_records
 #loss_df = FindLossesAfterDuplications(example_gene_tree, species_tree)

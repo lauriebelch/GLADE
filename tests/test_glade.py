@@ -238,9 +238,9 @@ def test_gene_tree_polytomy_small_example():
     d = dupes[0]
     # all three genes under n1 are reported (the old code dropped the third child)
     assert sorted(d["leaves1"] + d["leaves2"]) == ["0_1", "0_2", "1_1"]
-    # species 1 is only in one of the three children -> lost in the other two after the duplication
+    # at a polytomy the order of duplications and losses is unknown, so no losses after duplication are inferred
     losses = GainAndLossAndDuplication.FindLossesAfterDuplications(gene_tree, species_tree, ["0", "1", "2"])
-    assert sorted((l["Lost Species"], l["Child Node"]) for l in losses) == [("0", "1_1"), ("1", "0_1"), ("1", "0_2")]
+    assert losses == []
 
 
 def test_outputs_agree_with_orthofinder_and_each_other(tmp_path):
