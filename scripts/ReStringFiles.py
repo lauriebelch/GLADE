@@ -154,6 +154,53 @@ def convert_ancestral_fasta(indir, outdir, code_to_species, code_to_gene):
 
                 fout.write(">" + "_".join(parts) + "\n")
 
+def convert_bybranch(infile, outfile, code_to_species):
+    """*_bybranch.tsv: change species codes in the Branch column (e.g. N1___3) to species names."""
+    if not os.path.exists(infile):
+        return
+
+    with open(infile) as fin, open(outfile, "w") as fout:
+        reader = csv.DictReader(fin, delimiter="\t")
+        writer = csv.DictWriter(fout, fieldnames=reader.fieldnames, delimiter="\t")
+        writer.writeheader()
+
+        for row in reader:
+            parent, child = row["Branch"].split("___", 1)
+            row["Branch"] = convert_species_code(parent, code_to_species) + "___" + convert_species_code(child, code_to_species)
+            writer.writerow(row)
+
+def convert_extant_counts(infile, outfile, code_to_species):
+    """extant_OG_counts.tsv: change the species code column names to species names."""
+    if not os.path.exists(infile):
+        return
+
+    with open(infile) as fin, open(outfile, "w") as fout:
+        header = fin.readline().rstrip("\n").split("\t")
+        header = [convert_species_code(h, code_to_species) for h in header]
+        fout.write("\t".join(header) + "\n")
+        for line in fin:
+            fout.write(line)
+
+def convert_branch_change(infile, outfile, code_to_species):
+    """OrthogroupBranchChange.tsv: change species codes to species names."""
+    if not os.path.exists(infile):
+        return
+
+    with open(infile) as fin, open(outfile, "w") as fout:
+        reader = csv.DictReader(fin, delimiter="\t")
+        writer = csv.DictWriter(fout, fieldnames=reader.fieldnames, delimiter="\t")
+        writer.writeheader()
+
+        for row in reader:
+            parent, child = row["Branch"].split("___", 1)
+            parent = convert_species_code(parent, code_to_species)
+            child = convert_species_code(child, code_to_species)
+            row["Branch"] = f"{parent}___{child}"
+            row["Parent_Node"] = parent
+            row["Focal_Node"] = child
+            row["Orthogroup_Branch"] = row["Orthogroup"] + "_" + row["Branch"]
+            writer.writerow(row)
+
 def convert_branch_statistics(infile, outfile, code_to_species):
     if not os.path.exists(infile):
         return
@@ -249,18 +296,21 @@ def main(ortho_folder, n_threads):
         if os.path.exists(src):
             shutil.copy(src, dst)
 
-    # Copy by-branch & stats files unchanged
+    # by-branch files: species codes -> species names in the Branch column
     for fname in [
         "Gains_bybranch.tsv",
         "Loss_speciation_bybranch.tsv",
         "Duplications_bybranch.tsv",
         "Loss_postduplication_bybranch.tsv",
-        "Branch_statistics.tsv",
     ]:
-        src = os.path.join(glade, "GainsLossDuplication", fname)
-        dst = os.path.join(out_gld, fname)
-        if os.path.exists(src):
-            shutil.copy(src, dst)
+        convert_bybranch(os.path.join(glade, "GainsLossDuplication", fname),
+                         os.path.join(out_gld, fname), code_to_species)
+
+    # these two used to stay in GladeWD/ (with species codes), now they go to GainsLossDuplication/ too
+    convert_extant_counts(os.path.join(glade, "GainsLossDuplication", "extant_OG_counts.tsv"),
+                          os.path.join(out_gld, "extant_OG_counts.tsv"), code_to_species)
+    convert_branch_change(os.path.join(glade, "GainsLossDuplication", "OrthogroupBranchChange.tsv"),
+                          os.path.join(out_gld, "OrthogroupBranchChange.tsv"), code_to_species)
 
     bs_in  = os.path.join(glade, "GainsLossDuplication", "Branch_statistics.tsv")
     bs_out = os.path.join(out_gld, "Branch_statistics.tsv")

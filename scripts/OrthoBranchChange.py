@@ -165,7 +165,7 @@ def main(ortho_folder_path, n_threads):
         All_branches.append( node['Parent Node'] + "___" + node['Node'] )
     for gain in Gains:
         All_orthogroup.append( gain['Orthogroup'] )
-    All_orthogroup = list(set(All_orthogroup))
+    All_orthogroup = sorted(set(All_orthogroup)) # sorted so the output order is the same every run
     
     # all orthogroup-branch combos
     combos1 = np.array([(x, y) for x in All_branches for y in All_orthogroup])

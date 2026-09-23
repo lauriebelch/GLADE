@@ -15,6 +15,7 @@ Assumptions in NUMERIC MODE:
 import os
 import ete4
 import numpy as np
+import random
 import argparse
 from multiprocessing import Pool, cpu_count
 import csv
@@ -55,7 +56,7 @@ def load_gene_tree_from_big_file(og, tree_file_path):
 
 # For a given orthogroup + species-tree node, pick representative leaf genes
 # for that ancestral genome (numeric version).
-def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names):
+def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed=1):
     og = OG
     all_selected_sequences = []
 
@@ -103,7 +104,9 @@ def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names):
     if duplications:
         # Indices of duplications that occur below the target node
         idx_after = [i for i, d in enumerate(duplications) if d["speciestree_node"] in desc_nodes]
-        choice_cols = np.random.choice(["leaves1", "leaves2"], size=len(idx_after))
+        # seeded by seed + orthogroup + node, so runs are reproducible (and don't depend on threads)
+        rng = random.Random(f"{seed}_{og}_{node.name}")
+        choice_cols = [rng.choice(["leaves1", "leaves2"]) for i in idx_after]
         for dup_idx, col in zip(idx_after, choice_cols):
             for leaf_name in duplications[dup_idx][col]:
                 dupes_to_go.add(leaf_name)
@@ -278,12 +281,12 @@ def WriteAncestralFasta(focal_node, ancestral_genome, ortho_folder_path):
         fasta_file.write(ancestral_genome)
 
 # Wrapper for multiprocessing OG by OG processing
-def ProcessOrthogroupCurrent(index, gains_current, node, species_tree, ortho_folder_path, species_names):
+def ProcessOrthogroupCurrent(index, gains_current, node, species_tree, ortho_folder_path, species_names, seed):
     OG = gains_current[index]["Orthogroup"]
-    return OG, GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names)
+    return OG, GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed)
 
 # Build ancestral genome for a single node
-def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads):
+def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, seed=1):
     focal_node = node.name
     target_node = next(species_tree.search_nodes(name=focal_node))
 
@@ -306,7 +309,7 @@ def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names,
         results = pool.starmap(
             ProcessOrthogroupCurrent,
             [
-                (idx, gains_current, node, species_tree, ortho_folder_path, species_names)
+                (idx, gains_current, node, species_tree, ortho_folder_path, species_names, seed)
                 for idx in range(len(gains_current))
             ],
         )
@@ -339,7 +342,7 @@ def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names,
     ancestral_genome = BuildAncestralGenome(species, genes, orthogroup_names, all_fasta_dicts, focal_node)
     WriteAncestralFasta(focal_node, ancestral_genome, ortho_folder_path)
 
-def main(ortho_folder_path, n_threads):
+def main(ortho_folder_path, n_threads, seed=1):
 
     # Make ancestral genomes folder
     os.makedirs(os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/AncestralGenomes"), exist_ok=True)
@@ -369,7 +372,7 @@ def main(ortho_folder_path, n_threads):
     for node in species_tree.traverse("postorder"):
         if node.is_leaf:
             continue
-        AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads)
+        AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, seed)
         node_list.append(node.name)
 
     # Summaries from ancestral FASTAs

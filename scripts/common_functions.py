@@ -14,6 +14,31 @@ import time
 
 
 
+### functions for cleaning names ##############################################
+## OrthoFinder replaces some characters in Orthogroups.tsv and the gene trees,
+## but not in SequenceIDs.txt / SpeciesIDs.txt, so we compare cleaned names
+## gene names: OrthoFinder replaces : , ( ) with _
+def CleanGeneName(name):
+    for char in [":", ",", "(", ")"]:
+        name = name.replace(char, "_")
+    return name.strip()
+
+## species names: dots (and spaces) can also become _
+def CleanSpeciesName(name):
+    for char in [".", " ", ":", ",", "(", ")"]:
+        name = name.replace(char, "_")
+    return name.strip()
+
+## GLADE (like OrthoFinder) needs a rooted, fully bifurcating species tree
+## a polytomy used to make GLADE silently skip losses, so stop with a clear message
+def CheckBifurcating(species_tree):
+    for node in species_tree.traverse():
+        if not node.is_leaf and len(node.children) != 2:
+            raise ValueError(
+                f"The species tree is not fully bifurcating: node '{node.name}' has "
+                f"{len(node.children)} children.\nGLADE needs a rooted, fully bifurcating "
+                f"species tree (as does OrthoFinder). Please resolve the polytomy and re-run.")
+
 ### functions for filtering and pre-processing#################################
 ## filter to get rid of hierarchical orthogroups with < 4 genes
 
@@ -32,14 +57,12 @@ def FilterHogs(HOG_file, min_genes=4):
 
 ## function to save tsv
 def ListDictToTSV(data, filename, column_order=None):
-    if not data:
-        raise ValueError(f"No data to write: {filename}")
     with open(filename, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter="\t")
-        # header
+        # header (if there is no data, just write the header)
         if column_order:
             writer.writerow(column_order)
-        else:
+        elif data:
             writer.writerow(list(data[0].keys()))
         # rows
         for row in data:
@@ -121,11 +144,13 @@ def FindDuplications(gene_tree, species_tree, species_names):
     for node in gene_tree.traverse("postorder"):
         if node.is_leaf:
             continue
-        # species in children
-        leaves1 = { leaf.name.split("_")[0] for leaf in node.children[0].leaves() }
-        leaves2 = { leaf.name.split("_")[0] for leaf in node.children[1].leaves() }
-        # duplication if overlap
-        shared = leaves1 & leaves2
+        # species in each child (a node can have >2 children if the gene tree has a polytomy)
+        child_species = [{ leaf.name.split("_")[0] for leaf in child.leaves() } for child in node.children]
+        # duplication if any species is in more than one child
+        shared = set()
+        for i in range(len(child_species)):
+            for j in range(i + 1, len(child_species)):
+                shared = shared | (child_species[i] & child_species[j])
         if not shared:
             continue
         # species node
@@ -139,10 +164,14 @@ def FindDuplications(gene_tree, species_tree, species_names):
             node.add_props(duplication_label="D")
         else:
             node.add_props(low_support_duplication_label="lD")
+        # leaves1 = first child, leaves2 = all the other children (so no genes are missed at polytomies)
+        leaves2 = []
+        for child in node.children[1:]:
+            leaves2 = leaves2 + list(child.leaf_names())
         duplications.append({
             "genetree_node": node.name,
             "leaves1": list(node.children[0].leaf_names()),
-            "leaves2": list(node.children[1].leaf_names()),
+            "leaves2": leaves2,
             "speciestree_node": species_node,
             "support": support
         })

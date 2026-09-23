@@ -102,8 +102,8 @@ def FindLossesAfterDuplications(gene_tree, species_tree, species_names):
             continue
 
         # species under each child
-        leaves1 = {leaf.name.split("_")[0] for leaf in node.children[0].leaves()}
-        leaves2 = {leaf.name.split("_")[0] for leaf in node.children[1].leaves()}
+        # (a gene-tree node can have more than 2 children if there is a polytomy)
+        child_species = [{leaf.name.split("_")[0] for leaf in child.leaves()} for child in node.children]
 
         # species node this gene-tree node maps to
         species_node = mapdict[node.name]
@@ -114,25 +114,21 @@ def FindLossesAfterDuplications(gene_tree, species_tree, species_names):
                 expected_species = record["Child1"] + record["Child2"]
                 break
 
-        loss_info = IdentifyGeneLoss(leaves1, leaves2, expected_species)
-
-        # LOST IN CHILD1
-        for lost in loss_info["loss_to_child1"]:
-            loss_records.append({
-                "Focal Node": node.name,
-                "Lost Species": lost,
-                "Child Node": node.children[0].name,
-                "Species Node": species_node
-            })
-
-        # LOST IN CHILD2
-        for lost in loss_info["loss_to_child2"]:
-            loss_records.append({
-                "Focal Node": node.name,
-                "Lost Species": lost,
-                "Child Node": node.children[1].name,
-                "Species Node": species_node
-            })
+        # a species is lost in a child if it is in one of the other children but not this one
+        # (with 2 children this is the same as IdentifyGeneLoss)
+        for i in range(len(node.children)):
+            other_species = set()
+            for j in range(len(node.children)):
+                if j != i:
+                    other_species = other_species | child_species[j]
+            for lost in expected_species:
+                if lost in other_species and lost not in child_species[i]:
+                    loss_records.append({
+                        "Focal Node": node.name,
+                        "Lost Species": lost,
+                        "Child Node": node.children[i].name,
+                        "Species Node": species_node
+                    })
 
     return loss_records
 #loss_df = FindLossesAfterDuplications(example_gene_tree, species_tree)
@@ -328,8 +324,10 @@ def main(ortho_folder_path, n_threads):
     ## make ancestral genomes folder, if not exist
     os.makedirs(os.path.join(ortho_folder_path,"WorkingDirectory/GladeWD/GainsLossDuplication/"), exist_ok=True)
     
-    ListDictToTSV(duplications, os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication/Duplications.tsv"))
-    ListDictToTSV(speciation_loss, os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication/Loss_speciation.tsv"))
+    column_order = ['genetree_node', 'leaves1', 'leaves2', 'speciestree_node', 'support', 'Orthogroup']
+    ListDictToTSV(duplications, os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication/Duplications.tsv"), column_order)
+    column_order = ['Orthogroup', 'Node', 'Species', 'Child Node']
+    ListDictToTSV(speciation_loss, os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication/Loss_speciation.tsv"), column_order)
     
     column_order = ['Gain Node', 'Parent Node', 'Orthogroup']
     ListDictToTSV(gains_list, os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication/Gains.tsv"), column_order)
@@ -343,6 +341,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Generate Gene Trees for Hierarchical Orthogroups")
     parser.add_argument('folder', type=str, help="Path to the Orthofinder results folder")
+    parser.add_argument('-t', '--threads', type=int, default=8, help="Number of threads")
 
     args = parser.parse_args()
     ortho_folder_path = args.folder
