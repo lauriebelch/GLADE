@@ -56,15 +56,18 @@ def load_gene_tree_from_big_file(og, tree_file_path):
 
 # For a given orthogroup + species-tree node, pick representative leaf genes
 # for that ancestral genome (numeric version).
-def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed=1):
+def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed=1, newick=None):
     og = OG
     all_selected_sequences = []
 
-    # Load numeric gene tree from GladeWD
-    tree_file_path = os.path.join(
-        ortho_folder_path, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt"
-    )
-    gene_tree = load_gene_tree_from_big_file(og, tree_file_path)
+    # Load numeric gene tree (passed in, so we don't re-read the big tree file for every orthogroup)
+    if newick is not None:
+        gene_tree = ete4.Tree(newick, parser=1)
+    else:
+        tree_file_path = os.path.join(
+            ortho_folder_path, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt"
+        )
+        gene_tree = load_gene_tree_from_big_file(og, tree_file_path)
 
     # Ensure the gene tree root is named "n0" for distance calculations
     gene_tree.name = "n0"
@@ -281,12 +284,12 @@ def WriteAncestralFasta(focal_node, ancestral_genome, ortho_folder_path):
         fasta_file.write(ancestral_genome)
 
 # Wrapper for multiprocessing OG by OG processing
-def ProcessOrthogroupCurrent(index, gains_current, node, species_tree, ortho_folder_path, species_names, seed):
+def ProcessOrthogroupCurrent(index, gains_current, node, species_tree, ortho_folder_path, species_names, seed, newick):
     OG = gains_current[index]["Orthogroup"]
-    return OG, GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed)
+    return OG, GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed, newick)
 
 # Build ancestral genome for a single node
-def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, seed=1):
+def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, seed=1, gene_trees=None):
     focal_node = node.name
     target_node = next(species_tree.search_nodes(name=focal_node))
 
@@ -309,7 +312,8 @@ def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names,
         results = pool.starmap(
             ProcessOrthogroupCurrent,
             [
-                (idx, gains_current, node, species_tree, ortho_folder_path, species_names, seed)
+                (idx, gains_current, node, species_tree, ortho_folder_path, species_names, seed,
+                 gene_trees.get(gains_current[idx]["Orthogroup"]) if gene_trees else None)
                 for idx in range(len(gains_current))
             ],
         )
@@ -367,12 +371,20 @@ def main(ortho_folder_path, n_threads, seed=1):
         for row in reader:
             gains.append(row)
 
+    # Load all gene trees once (much faster than searching the file for every orthogroup and node)
+    gene_trees = {}
+    with open(os.path.join(ortho_folder_path, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt")) as f:
+        for line in f:
+            if ":" in line:
+                og, newick = line.split(":", 1)
+                gene_trees[og.strip()] = newick.strip()
+
     # Reconstruct ancestral genome for every internal node
     node_list = []
     for node in species_tree.traverse("postorder"):
         if node.is_leaf:
             continue
-        AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, seed)
+        AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, seed, gene_trees)
         node_list.append(node.name)
 
     # Summaries from ancestral FASTAs
