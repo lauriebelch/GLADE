@@ -110,6 +110,7 @@ def test_duplications_match_orthofinder(tmp_path):
     of = {}
     for row in read_tsv(os.path.join(folder, "Gene_Duplication_Events", "Duplications.tsv")):
         genes = set(row["Genes 1"].split(", ")) | set(row["Genes 2"].split(", "))
+        genes.discard("")   # at polytomies OrthoFinder puts all genes in "Genes 1" and leaves "Genes 2" empty
         of[(row["Orthogroup"], row["Gene Tree Node"])] = genes
 
     glade = {}
@@ -209,12 +210,34 @@ def test_output_files_where_readme_says(tmp_path):
         assert os.path.exists(os.path.join(folder, "GainsLossDuplication", name)), name
     for name in ["AncestralGenomes.txt", "Ancestral_HOG_counts.csv", "N0.fasta"]:
         assert os.path.exists(os.path.join(folder, "AncestralGenomes", name)), name
-    # species names (not numeric codes) in the extant counts
+    # species names (not numeric codes) in the extant counts and the by-branch files
     with open(os.path.join(folder, "GainsLossDuplication", "extant_OG_counts.tsv")) as fh:
         assert "Mycoplasma_agalactiae" in fh.readline()
+    for name in ["Gains_bybranch.tsv", "Duplications_bybranch.tsv", "OrthogroupBranchChange.tsv"]:
+        for row in read_tsv(os.path.join(folder, "GainsLossDuplication", name)):
+            assert not row["Branch"].split("___")[1].isdigit(), (name, row["Branch"])
 
 
 def test_version_flag():
     out = subprocess.run([sys.executable, GLADE, "--version"], capture_output=True, text=True)
     assert out.returncode == 0
     assert "GLADE" in out.stdout and "1.0.0" in out.stdout
+
+
+def test_gene_tree_polytomy_small_example():
+    # a small hand-made example: species tree ((0,1)N1,2)N0 and a gene tree with a
+    # 3-way polytomy at n1 containing two genes from species 0
+    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    import ete4
+    from common_functions import FindDuplications
+    import GainAndLossAndDuplication
+    species_tree = ete4.Tree("((0:1,1:1)N1:1,2:1)N0;", parser=1)
+    gene_tree = ete4.Tree("((0_1:1,0_2:1,1_1:1)n1:1,2_1:1)n0;", parser=1)
+    dupes = FindDuplications(gene_tree, species_tree, ["0", "1", "2"])
+    assert len(dupes) == 1
+    d = dupes[0]
+    # all three genes under n1 are reported (the old code dropped the third child)
+    assert sorted(d["leaves1"] + d["leaves2"]) == ["0_1", "0_2", "1_1"]
+    # species 1 is only in one of the three children -> lost in the other two after the duplication
+    losses = GainAndLossAndDuplication.FindLossesAfterDuplications(gene_tree, species_tree, ["0", "1", "2"])
+    assert sorted((l["Lost Species"], l["Child Node"]) for l in losses) == [("0", "1_1"), ("1", "0_1"), ("1", "0_2")]
