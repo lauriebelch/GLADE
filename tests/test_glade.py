@@ -241,3 +241,63 @@ def test_gene_tree_polytomy_small_example():
     # species 1 is only in one of the three children -> lost in the other two after the duplication
     losses = GainAndLossAndDuplication.FindLossesAfterDuplications(gene_tree, species_tree, ["0", "1", "2"])
     assert sorted((l["Lost Species"], l["Child Node"]) for l in losses) == [("0", "1_1"), ("1", "0_1"), ("1", "0_2")]
+
+
+def test_outputs_agree_with_orthofinder_and_each_other(tmp_path):
+    # cross-check the GLADE output tables against OrthoFinder's own files and each other
+    import ete4
+    folder = make_example(tmp_path)
+    out = run_glade(folder)
+    assert out.returncode == 0, out.stdout + out.stderr
+    gld = os.path.join(folder, "GainsLossDuplication")
+
+    species_tree = ete4.Tree(open(os.path.join(folder, "Species_Tree", "SpeciesTree_rooted_node_labels.txt")).read(), parser=1)
+    species_tree.name = "N0"
+    species = list(species_tree.leaf_names())
+    orthogroups = {row["Orthogroup"]: row for row in read_tsv(os.path.join(folder, "Orthogroups", "Orthogroups.tsv"))}
+
+    # extant counts = OrthoFinder's Orthogroups.GeneCount.tsv
+    gene_count = {row["Orthogroup"]: row for row in read_tsv(os.path.join(folder, "Orthogroups", "Orthogroups.GeneCount.tsv"))}
+    extant = {row["Family_ID"]: row for row in read_tsv(os.path.join(gld, "extant_OG_counts.tsv"))}
+    for og in gene_count:
+        for sp in species:
+            assert int(extant[og][sp]) == int(gene_count[og][sp])
+
+    # gain node = most recent common ancestor of the species that have the orthogroup
+    gains = read_tsv(os.path.join(gld, "Gains.tsv"))
+    for row in gains:
+        present = [sp for sp in species if orthogroups[row["Orthogroup"]][sp]]
+        mrca = present[0] if len(present) == 1 else species_tree.common_ancestor(present).name
+        assert row["Gain Node"] == mrca, row["Orthogroup"]
+
+    # branch statistics add up to the event tables
+    branch_stats = read_tsv(os.path.join(gld, "Branch_statistics.tsv"))
+    dups = [row for row in read_tsv(os.path.join(gld, "Duplications.tsv")) if float(row["support"]) >= 0.5]
+    assert sum(int(row["N_gains"]) for row in branch_stats) == len(gains)
+    assert sum(int(row["N_speciation_losses"]) for row in branch_stats) == count_rows(folder, "Loss_speciation.tsv")
+    assert sum(int(row["N_duplications"]) for row in branch_stats) == len(dups)
+
+    # duplications per species-tree node = OrthoFinder's
+    of_dups = {}
+    for row in read_tsv(os.path.join(folder, "Gene_Duplication_Events", "Duplications.tsv")):
+        if float(row["Support"]) >= 0.5:
+            of_dups[row["Species Tree Node"]] = of_dups.get(row["Species Tree Node"], 0) + 1
+    glade_dups = {}
+    for row in dups:
+        glade_dups[row["speciestree_node"]] = glade_dups.get(row["speciestree_node"], 0) + 1
+    assert glade_dups == of_dups
+
+    # orthogroup sizes on each branch agree with the extant and ancestral counts
+    # (this caught a bug where the first orthogroup's ancestral sizes were read as 0)
+    with open(os.path.join(folder, "AncestralGenomes", "Ancestral_HOG_counts.csv")) as fh:
+        ancestral = {row["Orthogroup"]: row for row in csv.DictReader(fh)}
+
+    def size(og, node):
+        if node in species:
+            return int(extant[og][node])
+        return int(ancestral.get(og, {}).get(node, 0))
+
+    for row in read_tsv(os.path.join(gld, "OrthogroupBranchChange.tsv")):
+        assert int(row["family_size"]) == size(row["Orthogroup"], row["Focal_Node"]), row["Orthogroup_Branch"]
+        assert int(row["parent_size"]) == size(row["Orthogroup"], row["Parent_Node"]), row["Orthogroup_Branch"]
+        assert int(row["change"]) == int(row["family_size"]) - int(row["parent_size"])

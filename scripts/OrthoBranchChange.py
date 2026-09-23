@@ -67,7 +67,6 @@ def main(ortho_folder_path, n_threads):
     Loss_s = []
     with open(loss_s_file_path, mode='r') as file:
         reader = csv.DictReader(file, delimiter='\t')
-        next(reader)
         for row in reader:
             Loss_s.append(row)
 
@@ -75,7 +74,6 @@ def main(ortho_folder_path, n_threads):
     Dupes = []
     with open(Dupes_file_path, mode='r') as file:
         reader = csv.DictReader(file, delimiter='\t')
-        next(reader)
         for row in reader:
             Dupes.append(row)
 
@@ -83,7 +81,6 @@ def main(ortho_folder_path, n_threads):
     Loss_pd = []
     with open(loss_pd_file_path, mode='r') as file:
         reader = csv.DictReader(file , delimiter='\t')
-        next(reader)
         for row in reader:
             Loss_pd.append(row)
             
@@ -99,7 +96,7 @@ def main(ortho_folder_path, n_threads):
     Ortho_ancest = []
     with open(Ortho_ancest_file_path, mode='r') as file:
         reader = csv.DictReader(file, delimiter=',')
-        next(reader)
+        # (no next(reader) here: DictReader already reads the header, so next() skipped the first orthogroup)
         for row in reader:
             Ortho_ancest.append(row)
             
