@@ -243,6 +243,35 @@ def test_gene_tree_polytomy_small_example():
     assert losses == []
 
 
+def test_postduplication_loss_branches():
+    # species tree ((0,1)N1,(2,3)N2)N0. Each row of Loss_postduplication.tsv is one species that lost one copy;
+    # species that form a clade are one loss, on the branch leading to that clade
+    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    import ete4
+    import BranchGainLossDuplication
+    species_tree = ete4.Tree("((0:1,1:1)N1:1,(2:1,3:1)N2:1)N0;", parser=1)
+    node_leaves, node_parent_list, _ = BranchGainLossDuplication.SpeciesTreeTraverse(species_tree)
+    node_parent_dict = dict(node_parent_list)
+
+    def branches(dupe, lost):
+        # dupe: (Orthogroup, gene-tree node, genes in copy 1, genes in copy 2, species node); lost: {child node: [species]}
+        og, focal, genes1, genes2, sn = dupe
+        dupes = [{"Orthogroup": og, "genetree_node": focal, "leaves1": str(genes1), "leaves2": str(genes2)}]
+        rows = [{"Orthogroup": og, "Focal Node": focal, "Lost Species": s, "Child Node": child, "Species Node": sn}
+                for child, species in lost.items() for s in species]
+        events = BranchGainLossDuplication.FindLossBranch(rows, node_leaves, node_parent_dict, dupes)
+        return sorted(e["Branch_name"] for e in events)
+
+    # duplication at N2, one copy lost in species 3 -> the branch to species 3 (not the branch to species 2)
+    assert branches(("OG1", "n1", ["2_0", "3_0"], ["2_1"], "N2"), {"2_1": ["3"]}) == ["N2___3"]
+    # duplication at N0, one copy lost in species 2 and 3 -> one loss on N0___N2 (not two losses on N0___N1)
+    assert branches(("OG2", "n0", ["0_1", "1_0", "2_4", "3_3"], ["0_2", "1_1"], "N0"), {"n4": ["2", "3"]}) == ["N0___N2"]
+    # as above but species 3 has neither copy: still one loss on N0___N2
+    assert branches(("OG3", "n0", ["0_1", "1_0", "2_4"], ["0_2", "1_1"], "N0"), {"n4": ["2"]}) == ["N0___N2"]
+    # each copy lost in a different species -> two losses, one per copy
+    assert branches(("OG4", "n0", ["0_1", "2_1"], ["1_1", "2_2"], "N0"), {"n1": ["1"], "n2": ["0"]}) == ["N1___0", "N1___1"]
+
+
 def test_outputs_agree_with_orthofinder_and_each_other(tmp_path):
     # cross-check the GLADE output tables against OrthoFinder's own files and each other
     import ete4

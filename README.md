@@ -94,11 +94,13 @@ Branches are named `parent___child`, e.g. `N1___Mycoplasma_hyopneumoniae` is the
 | Gains.tsv | orthogroup | `Gain Node` (node where the orthogroup first appears), `Parent Node`, `Orthogroup` |
 | Loss_speciation.tsv | loss of an orthogroup from a clade | `Orthogroup`, `Node` (species-tree node), `Species` (species in the clade that lost it), `Child Node` (the clade that lost it) |
 | Duplications.tsv | gene duplication | `genetree_node`, `leaves1` and `leaves2` (the genes on each side of the duplication; at a gene-tree polytomy `leaves2` holds all the other child clades), `speciestree_node` (where the duplication maps on the species tree), `support` (fraction of expected species with both copies; events with support ≥ 0.5 are counted, as in OrthoFinder), `Orthogroup` |
-| Loss_postduplication.tsv | loss of one copy after a duplication (duplications with support ≥ 0.5 at bifurcating gene-tree nodes; at a polytomy the order of events can't be told) | `Orthogroup`, `Focal Node` (gene-tree duplication node), `Lost Species`, `Child Node` (gene-tree clade missing the species), `Species Node` |
+| Loss_postduplication.tsv | a species that lost one copy after a duplication, one row per species (duplications with support ≥ 0.5 at bifurcating gene-tree nodes; at a polytomy the order of events can't be told) | `Orthogroup`, `Focal Node` (gene-tree duplication node), `Lost Species`, `Child Node` (gene-tree clade missing the species), `Species Node` |
 | Branch_statistics.tsv | species-tree branch | `branch`, `branch_length`, `N_gains`, `N_speciation_losses`, `N_duplications`, `N_postduplication_losses` |
 | Gains_bybranch.tsv, Loss_speciation_bybranch.tsv, Duplications_bybranch.tsv, Loss_postduplication_bybranch.tsv | event | `Branch`, orthogroup ID |
 | extant_OG_counts.tsv | orthogroup | `Desc`, `Family_ID`, then the number of genes in each extant species |
 | OrthogroupBranchChange.tsv | orthogroup × branch | `Orthogroup_Branch`, `Orthogroup`, `Branch`, `Parent_Node`, `Focal_Node`, `family_size` (genes at the child node), `parent_size` (genes at the parent node), `Branch_length`, `change` (family_size − parent_size), `change_per_time` (|change| / branch length) |
+
+In `Branch_statistics.tsv` and `Loss_postduplication_bybranch.tsv`, lost species that form a clade are counted as one loss after duplication, on the branch leading to that clade (species with neither copy of the duplicated gene are counted as part of the clade).
 
 ### 2. AncestralGenomes/
 

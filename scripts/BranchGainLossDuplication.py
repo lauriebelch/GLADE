@@ -13,6 +13,7 @@ import ete4
 import os
 import csv
 import sys
+import ast
 import argparse
 from common_functions import ListDictToTSV
 
@@ -68,33 +69,56 @@ def SpeciesTreeTraverse(species_tree):
                     }
     return node_leaves, node_parent_list, BRANCHES
 
-# Find branch where postduplication loss is
-def FindLossBranch(loss_list, node_leaves):
-    # I have the Species Node. The loss is in the child that doesn't have the species
+# Find the branch(es) where each postduplication loss happened
+# Loss_postduplication.tsv has one row per lost species: species that are in one copy of a duplicated gene
+# but not in the other copy. Losses in species that form a clade are one loss, on the branch leading to
+# that clade. For each copy (Orthogroup, Focal Node, Child Node) we take its lost species, and find the
+# largest clades below the Species Node where every species either lost this copy or has neither copy.
+# Each of those clades that contains at least one lost species is one loss, on the branch parent___clade.
+def FindLossBranch(loss_list, node_leaves, node_parent_dict, dupes):
+    # species (not genes) in each child of each duplication, to find species that have neither copy
+    wanted = {(row['Orthogroup'], row['Focal Node']) for row in loss_list}
+    dupe_species = {}
+    for dupe in dupes:
+        key = (dupe['Orthogroup'], dupe['genetree_node'])
+        if key in wanted:
+            sp1 = {g.split("_")[0] for g in ast.literal_eval(dupe['leaves1'])}
+            sp2 = {g.split("_")[0] for g in ast.literal_eval(dupe['leaves2'])}
+            dupe_species[key] = sp1 | sp2
+
+    # lost species for each copy, in file order
+    copies = {}
     for row in loss_list:
-        # lost species
-        lost_spp = row["Lost Species"]
-        # species node
-        sn = row["Species Node"]
-        # child node
-        children = node_leaves[sn]['children']
-        # which child node DOESN'T have lost Species
-        #print(node_leaves[children[0]])
-        #print(row)
-        #print("###")
-        ch0 = node_leaves[children[0]]['leaves']
-        ch0 = [s.replace('.', '_') for s in ch0]
-        ch1 = node_leaves[children[1]]['leaves']
-        ch1 = [s.replace('.', '_') for s in ch1]
-        if lost_spp in ch0:
-            loss_node = children[1]
-        elif lost_spp in ch1:
-            loss_node = children[0]
-        else:
-            loss_node = None
-        row['Species Child Node'] = loss_node
-        row['Branch_name'] = sn + "___" + loss_node if loss_node else None
-    return loss_list
+        key = (row['Orthogroup'], row['Focal Node'], row['Child Node'], row['Species Node'])
+        copies.setdefault(key, set()).add(row['Lost Species'])
+
+    def leaves(node):
+        return {s.replace('.', '_') for s in node_leaves[node]['leaves']}
+
+    def lost_clades(node, lost, absent):
+        clade = leaves(node)
+        if not clade & lost:
+            return []
+        if clade <= lost | absent:
+            return [node]
+        return [c for child in node_leaves[node]['children'] for c in lost_clades(child, lost, absent)]
+
+    loss_events = []
+    for (og, focal, child, sn), lost in copies.items():
+        # species with neither copy count as lost for this copy (they have lost the other copy too)
+        present = dupe_species.get((og, focal))
+        absent = leaves(sn) - present if present is not None else set()
+        clades = [c for ch in node_leaves[sn]['children'] for c in lost_clades(ch, lost, absent)]
+        for c in clades:
+            loss_events.append({
+                'Orthogroup': og,
+                'Focal Node': focal,
+                'Child Node': child,
+                'Species Node': sn,
+                'Species Child Node': c,
+                'Branch_name': node_parent_dict[c] + "___" + c
+                })
+    return loss_events
 
 ### code ##########################################
 
@@ -165,10 +189,9 @@ def main(ortho_folder_path, n_threads):
         parent_node = node_parent_dict.get(dupe['speciestree_node'], None)
         dupe['speciestree_parentnode'] = parent_node
         dupe['Branch_name'] = parent_node + "___" + dupe['speciestree_node'] if parent_node else None
+    # Find branch(es) where postduplication losses are (uses all duplications, to see which species have neither copy)
+    Loss_pd = FindLossBranch(Loss_pd, node_leaves, node_parent_dict, Dupes)
     Dupes = high_support_dupes
-    
-    # Find branch where postduplication loss is
-    Loss_pd = FindLossBranch(Loss_pd, node_leaves)
     
     for key in BRANCHES:
         # Find gains that match that branch
