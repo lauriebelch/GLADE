@@ -306,7 +306,7 @@ def main(ortho_folder, n_threads):
         convert_bybranch(os.path.join(glade, "GainsLossDuplication", fname),
                          os.path.join(out_gld, fname), code_to_species)
 
-    # these two used to stay in GladeWD/ (with species codes), now they go to GainsLossDuplication/ too
+    # these two also go to GainsLossDuplication/, with species names
     convert_extant_counts(os.path.join(glade, "GainsLossDuplication", "extant_OG_counts.tsv"),
                           os.path.join(out_gld, "extant_OG_counts.tsv"), code_to_species)
     convert_branch_change(os.path.join(glade, "GainsLossDuplication", "OrthogroupBranchChange.tsv"),

@@ -251,8 +251,6 @@ def _gene_tree_worker(args):
                 continue
             og_name, tree = line.split(":", 1)
             # read the tree with ete4, so we only ever change leaf names
-            # (this replaces the old regex, which missed characters like + and
-            # skipped any leaf starting with "n")
             gene_tree = ete4.Tree(tree.strip(), parser=1)
             # Fetch per-OG map once (only used in -X mode)
             og_map = None

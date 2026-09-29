@@ -69,12 +69,9 @@ def SpeciesTreeTraverse(species_tree):
                     }
     return node_leaves, node_parent_list, BRANCHES
 
-# Find the branch(es) where each postduplication loss happened
-# Loss_postduplication.tsv has one row per lost species: species that are in one copy of a duplicated gene
-# but not in the other copy. Losses in species that form a clade are one loss, on the branch leading to
-# that clade. For each copy (Orthogroup, Focal Node, Child Node) we take its lost species, and find the
-# largest clades below the Species Node where every species either lost this copy or has neither copy.
-# Each of those clades that contains at least one lost species is one loss, on the branch parent___clade.
+# Find the branch(es) where each postduplication loss happened.
+# Lost species that form a clade (together with species that have neither copy) count as one loss,
+# on the branch leading to that clade.
 def FindLossBranch(loss_list, node_leaves, node_parent_dict, dupes):
     # species (not genes) in each child of each duplication, to find species that have neither copy
     wanted = {(row['Orthogroup'], row['Focal Node']) for row in loss_list}
@@ -189,7 +186,7 @@ def main(ortho_folder_path, n_threads):
         parent_node = node_parent_dict.get(dupe['speciestree_node'], None)
         dupe['speciestree_parentnode'] = parent_node
         dupe['Branch_name'] = parent_node + "___" + dupe['speciestree_node'] if parent_node else None
-    # Find branch(es) where postduplication losses are (uses all duplications, to see which species have neither copy)
+    # Find branch(es) where postduplication losses are (needs all duplications)
     Loss_pd = FindLossBranch(Loss_pd, node_leaves, node_parent_dict, Dupes)
     Dupes = high_support_dupes
     

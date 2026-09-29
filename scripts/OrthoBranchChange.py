@@ -96,7 +96,7 @@ def main(ortho_folder_path, n_threads):
     Ortho_ancest = []
     with open(Ortho_ancest_file_path, mode='r') as file:
         reader = csv.DictReader(file, delimiter=',')
-        # (no next(reader) here: DictReader already reads the header, so next() skipped the first orthogroup)
+        # DictReader reads the header itself
         for row in reader:
             Ortho_ancest.append(row)
             

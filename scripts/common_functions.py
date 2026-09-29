@@ -30,7 +30,7 @@ def CleanSpeciesName(name):
     return name.strip()
 
 ## GLADE (like OrthoFinder) needs a rooted, fully bifurcating species tree
-## a polytomy used to make GLADE silently skip losses, so stop with a clear message
+## stop with a clear message if there is a polytomy
 def CheckBifurcating(species_tree):
     for node in species_tree.traverse():
         if not node.is_leaf and len(node.children) != 2:
