@@ -29,7 +29,7 @@ def CleanSpeciesName(name):
         name = name.replace(char, "_")
     return name.strip()
 
-## GLADE (like OrthoFinder) needs a rooted, fully bifurcating species tree
+## GLADE needs a rooted, fully bifurcating species tree
 ## stop with a clear message if there is a polytomy
 def CheckBifurcating(species_tree):
     for node in species_tree.traverse():
@@ -37,7 +37,8 @@ def CheckBifurcating(species_tree):
             raise ValueError(
                 f"The species tree is not fully bifurcating: node '{node.name}' has "
                 f"{len(node.children)} children.\nGLADE needs a rooted, fully bifurcating "
-                f"species tree (as does OrthoFinder). Please resolve the polytomy and re-run.")
+                f"species tree. Please resolve the polytomy (e.g. with zero-length branches in "
+                f"Species_Tree/SpeciesTree_rooted_node_labels.txt) and re-run.")
 
 ### functions for filtering and pre-processing#################################
 ## filter to get rid of hierarchical orthogroups with < 4 genes

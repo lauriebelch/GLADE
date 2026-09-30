@@ -12,7 +12,7 @@ First tagged release. Changes since GitHub commit 7f558f7:
 - Species names starting with "n" are now converted correctly
 - Gene-tree polytomies: all child clades are now used when finding duplications (previously only the first two), so duplication gene sets match OrthoFinder's
 - Losses after duplication are inferred only after duplications with support >= 0.5 (the ones counted as duplications) and only at bifurcating gene-tree nodes (at a polytomy the order of duplication and loss is unknown). This is the rule used for the published analyses; the 2026 GitHub version had also counted losses after low-support duplications
-- Species-tree polytomies: GLADE now stops with a clear message (a rooted, fully bifurcating species tree is required, as in OrthoFinder) instead of silently giving too few losses
+- Species-tree polytomies: GLADE now stops with a clear message (a rooted, fully bifurcating species tree is required) instead of silently giving too few losses
 - New `--seed` option: ancestral gene sets are now reproducible (same input + seed = same output, whatever the number of threads)
 - `extant_OG_counts.tsv` and `OrthogroupBranchChange.tsv` are now written to `GainsLossDuplication/` with species names (previously left in `WorkingDirectory/GladeWD/`); `*_bybranch.tsv` files now use species names
 - Fixed: `OrthogroupBranchChange.tsv` gave ancestral sizes of 0 for the first orthogroup in `Ancestral_HOG_counts.csv` (the first data row was skipped when reading the file)

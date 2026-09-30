@@ -1,6 +1,6 @@
 # GLADE
 
-GLADE: Accurate inference of Gains, Losses, Ancestral genomes, and Duplication Events for comparative genomics
+GLADE: Accurate inference of orthogroup gains, gene losses, ancestral gene content, and gene duplication events for comparative genomics
 
 Current version: **v1.0.0** (see [CHANGELOG.md](CHANGELOG.md)). Check your version with `python GLADE.py --version`.
 
@@ -14,7 +14,7 @@ GLADE is a Python tool for reconstructing the full evolutionary history of ortho
 ## Table of contents
 - [What is GLADE?](#What-is-GLADE)
 - [Installation](#Installation)
-- [How-to-use](#Simple-usage)
+- [Simple usage](#Simple-usage)
 - [Input requirements](#Input-requirements)
 - [Output files](#Output-files)
 - [Reproducibility](#Reproducibility)
@@ -54,7 +54,7 @@ pip install -r requirements.txt
 
 Then download GLADE (or `git clone https://github.com/lauriebelch/GLADE.git`) and run `scripts/GLADE.py`.
 
-GLADE runs fine on a laptop or desktop. Very large datasets (hundreds of species) are quicker on a server with more threads.
+GLADE runs on a laptop, desktop or server and does not need a cluster. As a guide, with 32 threads GLADE took 20 minutes and 13.3 GB of memory for 79 mammal proteomes, and 1 hour 4 minutes and 32.6 GB for 200 species (100 mammals and 100 budding yeasts).
 
 ## Simple usage
 
@@ -75,7 +75,7 @@ e.g. cd to core/WorkingDirectory and cp *.fa to the assign/WorkingDirectory
 ## Input requirements
 
 - A complete OrthoFinder v3 results folder (GLADE reads `Orthogroups/`, `Resolved_Gene_Trees/`, `Species_Tree/SpeciesTree_rooted_node_labels.txt`, `WorkingDirectory/SpeciesIDs.txt`, `WorkingDirectory/SequenceIDs.txt` and the `WorkingDirectory/Species*.fa` files)
-- A **rooted, fully bifurcating species tree** (as OrthoFinder requires). If you gave OrthoFinder your own species tree with a polytomy, GLADE will stop and tell you which node needs resolving
+- A **rooted, fully bifurcating species tree**. If the species tree in the OrthoFinder results has a polytomy (for example, one you gave OrthoFinder yourself), GLADE will stop and tell you which node needs resolving. You can resolve it with zero-length branches in `Species_Tree/SpeciesTree_rooted_node_labels.txt` and run GLADE again
 - Species and gene names can contain characters such as `.` `(` `)` `+` `|`. OrthoFinder changes some of these (e.g. `(` and `)` become `_` in the gene trees) and GLADE matches the names either way. If a name still can't be matched, GLADE stops and says which one
 - Orthogroups with fewer than 4 genes are skipped, because OrthoFinder does not build gene trees for them
 
