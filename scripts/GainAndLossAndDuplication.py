@@ -9,7 +9,7 @@ Created on Tue Apr 30 08:33:46 2024
 ## this script has functions that calculate gains, losses, and dupliations
 
 # import libraries
-import ete3
+import ete4
 import os
 import re
 import csv
@@ -27,11 +27,13 @@ from common_functions import ListDictToTSV, SpeciesTreeToDataFrame, MapGeneSpeci
 # row is the row of that file (when we loop through orthogroups)
 def CheckChildMembers(node, row):
     # get leaf names for both children
-    leaves1 = node.children[0].get_leaf_names()
-    leaves2 = node.children[1].get_leaf_names()
+    leaves1 = node.children[0].leaf_names()
+    leaves2 = node.children[1].leaf_names()
+
     # get OG_file lists to look in
     og1 = any(leaf in row and row[leaf] not in [None, ''] for leaf in leaves1)
     og2 = any(leaf in row and row[leaf] not in [None, ''] for leaf in leaves2)
+
     return og1 and og2
 
 ## function to find the node where a gain happened
@@ -46,7 +48,7 @@ def FindGainNode(species_tree, row):
     # gain happens at branch between node and its parent, so record parent too
     for node in species_tree.traverse():
         # if node is a leaf and it has species, thats the gain node
-        if node.is_leaf():
+        if node.is_leaf:
             if node.name in row and row[node.name] not in [None, '']:
                 return node.name, node.up.name
             continue
@@ -86,7 +88,7 @@ def IdentifyGeneLoss(leaves1, leaves2, combined_children):
 # if a species is not there at all
 def FindLossesAfterDuplications(gene_tree, species_tree, species_names):
     s_df = SpeciesTreeToDataFrame(species_tree)
-    mdf = MapGeneSpeciesTree(gene_tree, species_tree, species_tree.get_leaf_names())
+    mdf = MapGeneSpeciesTree(gene_tree, species_tree, species_tree.leaf_names())
 
     loss_records = []
 
@@ -94,14 +96,19 @@ def FindLossesAfterDuplications(gene_tree, species_tree, species_names):
     mapdict = {m["Gene Node"]: m["Species Node"] for m in mdf}
 
     for node in gene_tree.traverse():
-        if node.is_leaf():
+        if node.is_leaf:
             continue
-        if not hasattr(node, "duplication_label") and not hasattr(node, "low_support_duplication_label"):
+        # only look after duplications with support >= 0.5 (the ones counted as duplications)
+        if "duplication_label" not in node.props:
+            continue
+        # at a gene-tree polytomy we can't tell the order of duplications and losses, so skip it
+        # (the duplication itself, with all its genes, is still reported in Duplications.tsv)
+        if len(node.children) != 2:
             continue
 
         # species under each child
-        leaves1 = {leaf.name.split("_")[0] for leaf in node.children[0].get_leaves()}
-        leaves2 = {leaf.name.split("_")[0] for leaf in node.children[1].get_leaves()}
+        leaves1 = {leaf.name.split("_")[0] for leaf in node.children[0].leaves()}
+        leaves2 = {leaf.name.split("_")[0] for leaf in node.children[1].leaves()}
 
         # species node this gene-tree node maps to
         species_node = mapdict[node.name]
@@ -146,7 +153,7 @@ def FindDuplicationsParallel(index, row, gain_nodes, ortho_folder_path, species_
     #gene_tree_file = list(gain_nodes.keys())[index] + "_tree.txt"
     #gene_tree = ete3.Tree(os.path.join(ortho_folder_path, "HOG_Gene_Trees/", gene_tree_file), quoted_node_names=True, format=1)
     orthogroup_name = list(gain_nodes.keys())[index]
-    gene_tree= ete3.Tree(gene_trees[orthogroup_name], quoted_node_names=True, format=1)
+    gene_tree = ete4.Tree(gene_trees[orthogroup_name], parser=1)
     dupe_list = FindDuplications(gene_tree, species_tree, species_names)
     for dupe in dupe_list:
         dupe['Orthogroup'] = row['Orthogroup']
@@ -169,18 +176,19 @@ def FindLossNode(species_tree, row, gain_nodes):
     # find the gain node, which is where I want to start
     orthogroup = row['Orthogroup']
     gnn = gain_nodes.get(orthogroup, {'Gain Node': 'NA'})['Gain Node']
-    start_node = species_tree.search_nodes(name = gnn)[0]
+    start_node = next(species_tree.search_nodes(name=gnn))
     # if start_node is a leaf, we don't need to do anything
     loss_events = []
     counter = 0
     # traverse the species tree, starting at gain node
     for node in start_node.traverse():
         counter += 1
-        if counter ==1 & node.is_leaf(): break
-        if node.is_leaf(): continue # skip if leaf
+        if counter == 1 and node.is_leaf:
+            break
+        if node.is_leaf: continue # skip if leaf
         # get leaf names for both children
-        leaves1 = node.children[0].get_leaf_names()
-        leaves2 = node.children[1].get_leaf_names()
+        leaves1 = list(node.children[0].leaf_names())
+        leaves2 = list(node.children[1].leaf_names())
         # get OG_file lists to look in
         og1 = any(leaf in row and row[leaf] not in [None, ''] for leaf in leaves1)
         og2 = any(leaf in row and row[leaf] not in [None, ''] for leaf in leaves2)
@@ -267,14 +275,15 @@ def main(ortho_folder_path, n_threads):
             HOG_file.append(row)
             
     ## load and plot species tree
-    species_tree = ete3.Tree(os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/SpeciesTree_rooted_node_labels.txt"), quoted_node_names=True, format=1)
+    st_in = os.path.join(ortho_folder_path, "WorkingDirectory", "GladeWD", "SpeciesTree_rooted_node_labels.txt")
+    with open(st_in) as fh:
+        species_tree = ete4.Tree(fh, parser=1)
     species_tree.name = "N0"
 
     for node in species_tree.traverse():
-        if node.is_leaf():
+        if node.is_leaf:
             node.name = node.name.replace('.', '_')
-    species_names = species_tree.get_leaf_names()
-    species_names.sort(key=len, reverse=True)
+    species_names = sorted(species_tree.leaf_names(), key=len, reverse=True)
 
     ## save node-parent details
     node_dict = {}
@@ -324,8 +333,10 @@ def main(ortho_folder_path, n_threads):
     ## make ancestral genomes folder, if not exist
     os.makedirs(os.path.join(ortho_folder_path,"WorkingDirectory/GladeWD/GainsLossDuplication/"), exist_ok=True)
     
-    ListDictToTSV(duplications, os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication/Duplications.tsv"))
-    ListDictToTSV(speciation_loss, os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication/Loss_speciation.tsv"))
+    column_order = ['genetree_node', 'leaves1', 'leaves2', 'speciestree_node', 'support', 'Orthogroup']
+    ListDictToTSV(duplications, os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication/Duplications.tsv"), column_order)
+    column_order = ['Orthogroup', 'Node', 'Species', 'Child Node']
+    ListDictToTSV(speciation_loss, os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication/Loss_speciation.tsv"), column_order)
     
     column_order = ['Gain Node', 'Parent Node', 'Orthogroup']
     ListDictToTSV(gains_list, os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication/Gains.tsv"), column_order)
@@ -339,6 +350,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Generate Gene Trees for Hierarchical Orthogroups")
     parser.add_argument('folder', type=str, help="Path to the Orthofinder results folder")
+    parser.add_argument('-t', '--threads', type=int, default=8, help="Number of threads")
 
     args = parser.parse_args()
     ortho_folder_path = args.folder

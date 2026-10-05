@@ -1,0 +1,3 @@
+# GLADE needs the same packages as OrthoFinder v3 (which already installs ete4 and numpy)
+ete4
+numpy

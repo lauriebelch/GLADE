@@ -13,8 +13,9 @@ Assumptions in NUMERIC MODE:
 """
 
 import os
-import ete3
+import ete4
 import numpy as np
+import random
 import argparse
 from multiprocessing import Pool, cpu_count
 import csv
@@ -27,18 +28,18 @@ csv.field_size_limit(sys.maxsize)
 # SPECIES TREE (for summary)
 def PlotTree(t, path, filename):
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
-    ts = ete3.TreeStyle()
-    lstyle = ete3.NodeStyle()
+    ts = ete4.TreeStyle()
+    lstyle = ete4.NodeStyle()
     lstyle["fgcolor"] = "blue"
     lstyle["size"] = 1.5
-    nstyle = ete3.NodeStyle()
+    nstyle = ete4.NodeStyle()
     nstyle["fgcolor"] = "red"
     nstyle["size"] = 3
     for n in t.traverse():
-        if n.is_leaf():
+        if n.is_leaf:
             n.set_style(lstyle)
         else:
-            n.add_face(ete3.TextFace(n.name), column=0)
+            n.add_face(ete4.TextFace(n.name), column=0)
             n.set_style(nstyle)
     t.render(os.path.join(path, filename + ".png"), w=1920, units="px", tree_style=ts)
 
@@ -49,31 +50,34 @@ def load_gene_tree_from_big_file(og, tree_file_path):
         for line in f:
             if line.startswith(og + ": "):
                 _, tree_str = line.strip().split(":", 1)
-                return ete3.Tree(tree_str.strip(), quoted_node_names=True, format=1)
+                return ete4.Tree(tree_str.strip(), parser=1)
     raise ValueError(f"OG {og} not found in gene tree file {tree_file_path}.")
 
 
 # For a given orthogroup + species-tree node, pick representative leaf genes
 # for that ancestral genome (numeric version).
-def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names):
+def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed=1, newick=None):
     og = OG
     all_selected_sequences = []
 
-    # Load numeric gene tree from GladeWD
-    tree_file_path = os.path.join(
-        ortho_folder_path, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt"
-    )
-    gene_tree = load_gene_tree_from_big_file(og, tree_file_path)
+    # Load numeric gene tree (passed in, so we don't re-read the big tree file for every orthogroup)
+    if newick is not None:
+        gene_tree = ete4.Tree(newick, parser=1)
+    else:
+        tree_file_path = os.path.join(
+            ortho_folder_path, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt"
+        )
+        gene_tree = load_gene_tree_from_big_file(og, tree_file_path)
 
     # Ensure the gene tree root is named "n0" for distance calculations
     gene_tree.name = "n0"
 
     # Species below the focal node in the species tree
-    target_node = species_tree.search_nodes(name=node.name)[0]
-    target_species = {leaf.name for leaf in target_node.get_leaves()}  # numeric codes: "0","1",...
+    target_node = next(species_tree.search_nodes(name=node.name))
+    target_species = {leaf.name for leaf in target_node.leaves()}  # numeric codes: "0","1",...
 
     # All leaves in gene tree (node objects + names)
-    all_leaves_nodes = gene_tree.get_leaves()
+    all_leaves_nodes = list(gene_tree.leaves())
     all_leaves_names = np.array([leaf.name for leaf in all_leaves_nodes])
 
     # Extract species codes from gene tree leaves: "<species>_<geneCode>"
@@ -97,24 +101,25 @@ def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names):
     # Handle duplications after the target node:
     # randomly drop one child clade (leaves1 or leaves2) for those dupes
     # whose speciestree_node is a descendant of target_node.
-    desc_nodes = {n.name for n in target_node.get_descendants()}
+    desc_nodes = {n.name for n in target_node.descendants()}
     dupes_to_go = set()
 
     if duplications:
         # Indices of duplications that occur below the target node
         idx_after = [i for i, d in enumerate(duplications) if d["speciestree_node"] in desc_nodes]
-        choice_cols = np.random.choice(["leaves1", "leaves2"], size=len(idx_after))
+        # seeded by seed + orthogroup + node, so runs are reproducible (and don't depend on threads)
+        rng = random.Random(f"{seed}_{og}_{node.name}")
+        choice_cols = [rng.choice(["leaves1", "leaves2"]) for i in idx_after]
         for dup_idx, col in zip(idx_after, choice_cols):
             for leaf_name in duplications[dup_idx][col]:
                 dupes_to_go.add(leaf_name)
 
     # Remove chosen duplicate leaves
-    all_leaves_nodes = gene_tree.get_leaves()
+    all_leaves_nodes = list(gene_tree.leaves())
     all_leaves_names = np.array([leaf.name for leaf in all_leaves_nodes])
     keep_mask = ~np.isin(all_leaves_names, list(dupes_to_go))
     keep_leaves = [all_leaves_nodes[i] for i in np.where(keep_mask)[0]]
     gene_tree.prune(keep_leaves, preserve_branch_length=True)
-
     # Handle duplications before the target node:
     # count how many duplications on the path from the root to target_node.
     # Each duplication adds 1 expected copy.
@@ -132,11 +137,11 @@ def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names):
     # Choose representative genes:
     # compute root to leaf distances
     # iteratively choose medians until expected_copies or leaf list is exhausted
-    leaf_nodes = gene_tree.get_leaves()
+    leaf_nodes = list(gene_tree.leaves())
     leaf_names = np.array([leaf.name for leaf in leaf_nodes])
 
-    distances = [leaf.get_distance("n0") for leaf in leaf_nodes]
-    distances = np.array(distances)
+    root = gene_tree
+    distances = np.array([gene_tree.get_distance(root, leaf) for leaf in leaf_nodes])
 
     selected_sequences = []
     cur_dist = distances.copy()
@@ -279,14 +284,14 @@ def WriteAncestralFasta(focal_node, ancestral_genome, ortho_folder_path):
         fasta_file.write(ancestral_genome)
 
 # Wrapper for multiprocessing OG by OG processing
-def ProcessOrthogroupCurrent(index, gains_current, node, species_tree, ortho_folder_path, species_names):
+def ProcessOrthogroupCurrent(index, gains_current, node, species_tree, ortho_folder_path, species_names, seed, newick):
     OG = gains_current[index]["Orthogroup"]
-    return OG, GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names)
+    return OG, GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed, newick)
 
 # Build ancestral genome for a single node
-def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads):
+def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, seed=1, gene_trees=None):
     focal_node = node.name
-    target_node = species_tree.search_nodes(name=focal_node)[0]
+    target_node = next(species_tree.search_nodes(name=focal_node))
 
     # ancestors (including focal node)
     ancestors = [focal_node]
@@ -307,7 +312,8 @@ def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names,
         results = pool.starmap(
             ProcessOrthogroupCurrent,
             [
-                (idx, gains_current, node, species_tree, ortho_folder_path, species_names)
+                (idx, gains_current, node, species_tree, ortho_folder_path, species_names, seed,
+                 gene_trees.get(gains_current[idx]["Orthogroup"]) if gene_trees else None)
                 for idx in range(len(gains_current))
             ],
         )
@@ -340,7 +346,7 @@ def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names,
     ancestral_genome = BuildAncestralGenome(species, genes, orthogroup_names, all_fasta_dicts, focal_node)
     WriteAncestralFasta(focal_node, ancestral_genome, ortho_folder_path)
 
-def main(ortho_folder_path, n_threads):
+def main(ortho_folder_path, n_threads, seed=1):
 
     # Make ancestral genomes folder
     os.makedirs(os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/AncestralGenomes"), exist_ok=True)
@@ -349,9 +355,10 @@ def main(ortho_folder_path, n_threads):
     species_tree_path = os.path.join(
         ortho_folder_path, "WorkingDirectory", "GladeWD", "SpeciesTree_rooted_node_labels.txt"
     )
-    species_tree = ete3.Tree(species_tree_path, quoted_node_names=True, format=1)
+    with open(species_tree_path) as fh:
+        species_tree = ete4.Tree(fh, parser=1)
     species_tree.name = "N0"
-    species_names = species_tree.get_leaf_names()  # numeric species codes
+    species_names = list(species_tree.leaf_names())  # numeric species codes
 
     # Load gains (numeric)
     gains_file_path = os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/GainsLossDuplication", "Gains.tsv")
@@ -364,12 +371,20 @@ def main(ortho_folder_path, n_threads):
         for row in reader:
             gains.append(row)
 
+    # Load all gene trees once (much faster than searching the file for every orthogroup and node)
+    gene_trees = {}
+    with open(os.path.join(ortho_folder_path, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt")) as f:
+        for line in f:
+            if ":" in line:
+                og, newick = line.split(":", 1)
+                gene_trees[og.strip()] = newick.strip()
+
     # Reconstruct ancestral genome for every internal node
     node_list = []
     for node in species_tree.traverse("postorder"):
-        if node.is_leaf():
+        if node.is_leaf:
             continue
-        AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads)
+        AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, seed, gene_trees)
         node_list.append(node.name)
 
     # Summaries from ancestral FASTAs
@@ -417,5 +432,5 @@ def main(ortho_folder_path, n_threads):
             writer.writerow(row)
 
     # Plot species tree for convenience
-    PlotTree(species_tree, fasta_folder, "species_tree")
+    #PlotTree(species_tree, fasta_folder, "species_tree")
 

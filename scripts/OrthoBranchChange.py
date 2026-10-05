@@ -36,7 +36,7 @@ def process_data_item(d, ortho_dict, BS_dict):
     
     d['family_size'] = NA_INT(family_size)
     d['parent_size'] = NA_INT(parent_size)
-    d['Branch_length'] = float(Branch_length) if Branch_length != "NA" else "NA"
+    d['Branch_length'] = float(Branch_length) if Branch_length not in ("NA", "", None) else "NA"
     
     if d['family_size'] == "NA" or d['parent_size'] == "NA":
         d['change'] = 'NA'
@@ -67,7 +67,6 @@ def main(ortho_folder_path, n_threads):
     Loss_s = []
     with open(loss_s_file_path, mode='r') as file:
         reader = csv.DictReader(file, delimiter='\t')
-        next(reader)
         for row in reader:
             Loss_s.append(row)
 
@@ -75,7 +74,6 @@ def main(ortho_folder_path, n_threads):
     Dupes = []
     with open(Dupes_file_path, mode='r') as file:
         reader = csv.DictReader(file, delimiter='\t')
-        next(reader)
         for row in reader:
             Dupes.append(row)
 
@@ -83,7 +81,6 @@ def main(ortho_folder_path, n_threads):
     Loss_pd = []
     with open(loss_pd_file_path, mode='r') as file:
         reader = csv.DictReader(file , delimiter='\t')
-        next(reader)
         for row in reader:
             Loss_pd.append(row)
             
@@ -99,7 +96,7 @@ def main(ortho_folder_path, n_threads):
     Ortho_ancest = []
     with open(Ortho_ancest_file_path, mode='r') as file:
         reader = csv.DictReader(file, delimiter=',')
-        next(reader)
+        # DictReader reads the header itself
         for row in reader:
             Ortho_ancest.append(row)
             
@@ -165,7 +162,7 @@ def main(ortho_folder_path, n_threads):
         All_branches.append( node['Parent Node'] + "___" + node['Node'] )
     for gain in Gains:
         All_orthogroup.append( gain['Orthogroup'] )
-    All_orthogroup = list(set(All_orthogroup))
+    All_orthogroup = sorted(set(All_orthogroup)) # sorted so the output order is the same every run
     
     # all orthogroup-branch combos
     combos1 = np.array([(x, y) for x in All_branches for y in All_orthogroup])

@@ -7,12 +7,38 @@ Created on Mon Jul 15 13:07:56 2024
 """
 
 import csv
-import ete3
+import ete4
 import os
 import re
 import time
 
 
+
+### functions for cleaning names ##############################################
+## OrthoFinder replaces some characters in Orthogroups.tsv and the gene trees,
+## but not in SequenceIDs.txt / SpeciesIDs.txt, so we compare cleaned names
+## gene names: OrthoFinder replaces : , ( ) with _
+def CleanGeneName(name):
+    for char in [":", ",", "(", ")"]:
+        name = name.replace(char, "_")
+    return name.strip()
+
+## species names: dots (and spaces) can also become _
+def CleanSpeciesName(name):
+    for char in [".", " ", ":", ",", "(", ")"]:
+        name = name.replace(char, "_")
+    return name.strip()
+
+## GLADE needs a rooted, fully bifurcating species tree
+## stop with a clear message if there is a polytomy
+def CheckBifurcating(species_tree):
+    for node in species_tree.traverse():
+        if not node.is_leaf and len(node.children) != 2:
+            raise ValueError(
+                f"The species tree is not fully bifurcating: node '{node.name}' has "
+                f"{len(node.children)} children.\nGLADE needs a rooted, fully bifurcating "
+                f"species tree. Please resolve the polytomy (e.g. with zero-length branches in "
+                f"Species_Tree/SpeciesTree_rooted_node_labels.txt) and re-run.")
 
 ### functions for filtering and pre-processing#################################
 ## filter to get rid of hierarchical orthogroups with < 4 genes
@@ -32,14 +58,12 @@ def FilterHogs(HOG_file, min_genes=4):
 
 ## function to save tsv
 def ListDictToTSV(data, filename, column_order=None):
-    if not data:
-        raise ValueError(f"No data to write: {filename}")
     with open(filename, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter="\t")
-        # header
+        # header (if there is no data, just write the header)
         if column_order:
             writer.writerow(column_order)
-        else:
+        elif data:
             writer.writerow(list(data[0].keys()))
         # rows
         for row in data:
@@ -54,7 +78,7 @@ def ListDictToTSV(data, filename, column_order=None):
 def SpeciesTreeToDataFrame(species_tree):
     data = []
     for node in species_tree.traverse():
-        if node.is_leaf():
+        if node.is_leaf:
             # leaf has itself as both children
             leaf = node.name
             data.append({
@@ -63,8 +87,8 @@ def SpeciesTreeToDataFrame(species_tree):
                 "Child2": [leaf]
             })
             continue
-        child1 = node.children[0].get_leaf_names()
-        child2 = node.children[1].get_leaf_names()
+        child1 = list(node.children[0].leaf_names())
+        child2 = list(node.children[1].leaf_names())
         data.append({
             "Node": node.name,
             "Child1": child1,
@@ -84,10 +108,10 @@ def MapGeneSpeciesTree(gene_tree, species_tree, species_names):
     gene_tree.name = "n0"
     mapping = []
     for node in gene_tree.traverse():
-        if node.is_leaf():
+        if node.is_leaf:
             continue
         # species in this gene-tree node
-        leaves = { leaf.name.split("_")[0] for leaf in node.get_leaves() }
+        leaves = { leaf.name.split("_")[0] for leaf in node.leaves() }
         # find the species_tree node whose two children both intersect leaves
         for row in s_df:
             child1 = set(row["Child1"])
@@ -119,30 +143,36 @@ def FindDuplications(gene_tree, species_tree, species_names):
     # Convert mapping list to dict for quick lookup
     mapdict = { m["Gene Node"]: m["Species Node"] for m in mapping }
     for node in gene_tree.traverse("postorder"):
-        if node.is_leaf():
+        if node.is_leaf:
             continue
-        # species in children
-        leaves1 = { leaf.name.split("_")[0] for leaf in node.children[0].get_leaves() }
-        leaves2 = { leaf.name.split("_")[0] for leaf in node.children[1].get_leaves() }
-        # duplication if overlap
-        shared = leaves1 & leaves2
+        # species in each child (a node can have >2 children if the gene tree has a polytomy)
+        child_species = [{ leaf.name.split("_")[0] for leaf in child.leaves() } for child in node.children]
+        # duplication if any species is in more than one child
+        shared = set()
+        for i in range(len(child_species)):
+            for j in range(i + 1, len(child_species)):
+                shared = shared | (child_species[i] & child_species[j])
         if not shared:
             continue
         # species node
         species_node = mapdict.get(node.name)
         # compute support
-        st_node = species_tree.search_nodes(name=species_node)[0]
-        expected_species = { leaf.name for leaf in st_node.get_leaves() }
+        st_node = next(species_tree.search_nodes(name=species_node))
+        expected_species = { leaf.name for leaf in st_node.leaves() }
         support = len(shared) / len(expected_species)
         # label event
         if support >= 0.5:
-            node.add_features(duplication_label="D")
+            node.add_props(duplication_label="D")
         else:
-            node.add_features(low_support_duplication_label="lD")
+            node.add_props(low_support_duplication_label="lD")
+        # leaves1 = first child, leaves2 = all the other children (so no genes are missed at polytomies)
+        leaves2 = []
+        for child in node.children[1:]:
+            leaves2 = leaves2 + list(child.leaf_names())
         duplications.append({
             "genetree_node": node.name,
-            "leaves1": node.children[0].get_leaf_names(),
-            "leaves2": node.children[1].get_leaf_names(),
+            "leaves1": list(node.children[0].leaf_names()),
+            "leaves2": leaves2,
             "speciestree_node": species_node,
             "support": support
         })
