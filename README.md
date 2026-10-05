@@ -2,7 +2,7 @@
 
 GLADE: Accurate inference of orthogroup gains, gene losses, ancestral gene content, and gene duplication events for comparative genomics
 
-Current version: **v1.0.0** (see [CHANGELOG.md](CHANGELOG.md)). Check your version with `python GLADE.py --version`.
+Current version: **v1.0.0** (see [CHANGELOG.md](CHANGELOG.md)). Check your version with `python scripts/GLADE.py --version`.
 
 GLADE is a Python tool for reconstructing the full evolutionary history of orthogroups — including gene gains, losses, duplications, and ancestral gene sets — using only an OrthoFinder v3 results directory as input. GLADE maps every event onto the species tree and produces rich output for comparative genomics.
 
@@ -40,25 +40,42 @@ Given a complete OrthoFinder v3 run, GLADE:
 
 ## Installation
 
-GLADE requires Python 3.9 or later.
+GLADE requires Python 3.9 or later, and the same dependencies as OrthoFinder v3 (ete4 and numpy). We recommend that you run GLADE in an OrthoFinder conda environment, so there is nothing extra to install.
 
-GLADE requires the same dependencies as OrthoFinder v3 (ete4 and numpy). We recommend that you run GLADE in an OrthoFinder conda environment, so there is nothing extra to install.
+1. Install OrthoFinder v3 in a conda environment and activate it. See the OrthoFinder github for details https://github.com/OrthoFinder/OrthoFinder?tab=readme-ov-file#installation
 
-See the OrthoFinder github for details on how to set this up https://github.com/OrthoFinder/OrthoFinder?tab=readme-ov-file#installation
+```
+conda create -n of3_env python=3.12
+conda activate of3_env
+conda install orthofinder
+```
 
-If you are not using an OrthoFinder environment:
+2. Download GLADE
+
+```
+git clone https://github.com/lauriebelch/GLADE.git
+cd GLADE
+```
+
+3. Check that it works
+
+```
+python scripts/GLADE.py --version
+```
+
+This should print `GLADE v1.0.0`. You can then try GLADE on the [example data](#Example-data).
+
+If you are not using an OrthoFinder environment, install the dependencies with:
 
 ```
 pip install -r requirements.txt
 ```
 
-Then download GLADE (or `git clone https://github.com/lauriebelch/GLADE.git`) and run `scripts/GLADE.py`.
-
 GLADE runs on a laptop, desktop or server and does not need a cluster. As a guide, with 32 threads GLADE took 20 minutes and 13.3 GB of memory for 79 mammal proteomes, and 1 hour 4 minutes and 32.6 GB for 200 species (100 mammals and 100 budding yeasts).
 
 ## Simple usage
 
-```python GLADE.py -f path/to/orthofinder/results -t threads [default=8]```
+```python scripts/GLADE.py -f path/to/orthofinder/results -t threads [default=8]```
 
 Options:
 - `-f` / `--folder` — the OrthoFinder results folder (e.g. `OrthoFinder/Results_Jan01`)
@@ -120,12 +137,28 @@ These are ancestral gene sets: for each internal node of the species tree, the g
 
 ## Example data
 
-Unzip the ExampleData.zip file, which contains an OrthoFinder results directory on a small dataset.
-Then run:
+ExampleData.zip contains an OrthoFinder results directory for a small dataset (four Mycoplasma species). Unzip it and run GLADE:
 
 ```
-python GLADE.py -f ExampleData/OrthoFinder/Results_ExampleDataGLADE/
+unzip ExampleData.zip
+python scripts/GLADE.py -f ExampleData/OrthoFinder/Results_ExampleDataGLADE/
 ```
+
+This takes a few seconds. GLADE prints each step as it runs, and ends with `Finished!` and the folder where the files have landed.
+
+You should now have two new folders in `ExampleData/OrthoFinder/Results_ExampleDataGLADE/` (`GainsLossDuplication/` and `AncestralGenomes/`) and a `GLADE_run_info.txt` file. To check the run worked, `GainsLossDuplication/Branch_statistics.tsv` should look like this:
+
+| branch | branch_length | N_gains | N_speciation_losses | N_duplications | N_postduplication_losses |
+|---|---|---|---|---|---|
+| N1___Mycoplasma_hyopneumoniae | 0.539445 | 10 | 6 | 69 | 0 |
+| N1___Mycoplasma_agalactiae | 0.514074 | 9 | 4 | 123 | 0 |
+| N0___N1 | 0.255239 | 6 | 0 | 6 | 0 |
+| N2___Mycoplasma_gallisepticum | 0.449593 | 3 | 3 | 119 | 1 |
+| N2___Mycoplasma_genitalium | 0.534473 | 0 | 16 | 10 | 0 |
+| N0___N2 | 0.255239 | 4 | 0 | 11 | 0 |
+| root___N0 | 0.0 | 300 | 0 | 0 | 0 |
+
+and `AncestralGenomes/AncestralGenomes.txt` should list 300, 312 and 315 genes for nodes N0, N1 and N2.
 
 ## Testing
 
