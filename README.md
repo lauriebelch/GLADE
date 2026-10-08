@@ -133,7 +133,7 @@ These are ancestral gene sets: for each internal node of the species tree, the g
 
 - Each run writes `GLADE_run_info.txt` with the GLADE version, the command, the seed and the number of threads
 - Choosing which genes represent a duplicated orthogroup in the ancestral gene sets involves a random choice. This is seeded with `--seed`, so the same input and seed give identical output (whatever the number of threads)
-- Tagged releases are on GitHub, and each is archived on Zenodo with a DOI
+- Tagged releases are on GitHub. Version 1.0.0, used in the paper, is also archived on figshare (DOI: 10.6084/m9.figshare.31158355)
 
 ## Example data
 
