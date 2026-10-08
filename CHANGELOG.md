@@ -16,6 +16,7 @@ First tagged release. Changes since GitHub commit 7f558f7:
 - New `--seed` option: ancestral gene sets are now reproducible (same input + seed = same output, whatever the number of threads)
 - `extant_OG_counts.tsv` and `OrthogroupBranchChange.tsv` are now written to `GainsLossDuplication/` with species names (previously left in `WorkingDirectory/GladeWD/`); `*_bybranch.tsv` files now use species names
 - Fixed: `OrthogroupBranchChange.tsv` gave ancestral sizes of 0 for the first orthogroup in `Ancestral_HOG_counts.csv` (the first data row was skipped when reading the file)
+- Faster: each orthogroup's gene tree is now loaded once, instead of searching the gene-tree file for every orthogroup and node. Output is unchanged
 - Fixed: losses after duplication were put on the wrong branch in `Branch_statistics.tsv` and `Loss_postduplication_bybranch.tsv` (on the sister branch of the one where the loss happened), and each lost species was counted as a separate loss. Losses in species that form a clade are now one loss, on the branch leading to that clade. `Loss_postduplication.tsv` (one row per lost species) is unchanged
 - Empty results tables (e.g. no losses after duplication) no longer crash GLADE
 - If `Log.txt` is missing GLADE assumes a standard (non `-X`) OrthoFinder run instead of stopping
