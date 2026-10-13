@@ -21,6 +21,7 @@ GLADE is a Python tool for reconstructing the full evolutionary history of ortho
 - [Example-data](#Example-data)
 - [Testing](#Testing)
 - [Citation](#Citation)
+- [Licence](#Licence)
 
 ## What is GLADE?
 
@@ -173,3 +174,6 @@ pytest -v tests/
 
 Belcher L.J. & Kelly S. (2026) GLADE: Accurate inference of Gains, Losses, Ancestral genomes, and Duplication Events for comparative genomics. [bioRxiv](https://www.biorxiv.org/content/10.64898/2026.01.27.702036v1)
 
+## Licence
+
+GLADE is released under the GNU General Public License v3.0 (see `LICENSE`).
