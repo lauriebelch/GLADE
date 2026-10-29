@@ -169,9 +169,14 @@ def Build_OG_Leaf_Map(Input, SpeciesDict, SequenceIDsDict):
             OGLeafMap[og_name] = og_map
     return OGLeafMap
 
-def Convert_Orthogroups_TXT(Input, SequenceIDsDict):
+def Convert_Orthogroups_TXT(Input, SequenceIDsDict, SpeciesDict):
     """
     Convert Orthogroups.txt (1 OG per line, gene list format)
+
+    OrthoFinder 3.2 writes each gene in Orthogroups.txt as <species>_<gene> (the species name
+    with "." and " " as "_") when two species have genes of the same name, and as the gene name
+    alone otherwise. Both are read: a gene that starts with a species' prefix is looked up in that
+    species' genes, and otherwise by its name alone.
     """
 
     og_in  = os.path.join(Input, "Orthogroups", "Orthogroups.txt")
@@ -190,6 +195,21 @@ def Convert_Orthogroups_TXT(Input, SequenceIDsDict):
     def normalize_gene(g):
         return g.strip().split()[0]
 
+    # <species>_ as OrthoFinder writes it, for each species; longest first, so that a species whose
+    # name starts with another species' name is matched as itself
+    prefixes = {}
+    for name, code in SpeciesDict.items():
+        prefixes[name.replace(".", "_").replace(" ", "_") + "_"] = code
+    prefixes = sorted(prefixes.items(), key=lambda item: -len(item[0]))
+
+    def lookup(gene):
+        for prefix, code in prefixes:
+            if gene.startswith(prefix) and code in SequenceIDsDict:
+                found = FindGene(SequenceIDsDict[code], gene[len(prefix):])
+                if found is not None:
+                    return found
+        return FindGene(gene_to_code, gene)
+
     # Process file
     with open(og_in) as infile, open(og_out, "w") as outfile:
         for line in infile:
@@ -203,7 +223,7 @@ def Convert_Orthogroups_TXT(Input, SequenceIDsDict):
             new_genes = []
             for g in genes:
                 norm = normalize_gene(g)
-                code = FindGene(gene_to_code, norm)
+                code = lookup(norm)
                 if code is None:
                     raise KeyError(
                         f"Gene '{norm}' not found in SequenceIDs. Original line: {line}"
@@ -371,7 +391,7 @@ def main(ortho_folder_path, n_threads):
     os.makedirs(os.path.dirname(parent_output_file), exist_ok=True)
     used_X = orthofinder_used_X(ortho_folder_path)
     SpeciesDict, SequenceIDsDict = File_Dictionaries(ortho_folder_path)
-    Convert_Orthogroups_TXT(ortho_folder_path, SequenceIDsDict)
+    Convert_Orthogroups_TXT(ortho_folder_path, SequenceIDsDict, SpeciesDict)
     OGLeafMap = None
     if used_X:
         OGLeafMap = Build_OG_Leaf_Map(ortho_folder_path, SpeciesDict,SequenceIDsDict)

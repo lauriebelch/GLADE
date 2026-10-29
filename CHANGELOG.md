@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.1 (2026)
+
+- Fixed: GLADE stopped with "Gene ... not found in SequenceIDs" when two species have genes of the same name. OrthoFinder 3.2 then writes every gene in `Orthogroups.txt` as `<species>_<gene>`, and GLADE now reads these names. Output is unchanged for runs that v1.0.0 completed
+- Added a test with shared gene names (`test_gene_names_shared_between_species`)
+
 ## v1.0.0 (2026)
 
 First tagged release. Changes since GitHub commit 7f558f7:

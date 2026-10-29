@@ -6,6 +6,7 @@ The edge-case tests copy ExampleData and edit it to recreate reported problems:
   - species names containing dots
   - gene IDs containing ( ) and +   (OrthoFinder writes ( ) as _ in trees/Orthogroups.tsv)
   - species names starting with "n"
+  - gene names shared between species (OrthoFinder 3.2 then writes <species>_<gene> in Orthogroups.txt)
   - a polytomy in the species tree
   - gene-tree polytomies (compared against OrthoFinder's own duplication output)
   - non-deterministic ancestral gene sets
@@ -160,6 +161,42 @@ def test_gene_ids_with_special_characters(tmp_path):
     assert count_rows(folder, "Duplications.tsv") == 338
 
 
+def prefix_orthogroups_txt(folder):
+    # write Orthogroups.txt as OrthoFinder 3.2 does when two species have genes of the same name:
+    # every gene as <species>_<gene>, the species taken from its column in Orthogroups.tsv
+    species_of = {}
+    for table in ["Orthogroups.tsv", "Orthogroups_UnassignedGenes.tsv"]:
+        with open(os.path.join(folder, "Orthogroups", table)) as fh:
+            species = next(fh).rstrip("\n").split("\t")[1:]
+            for line in fh:
+                for sp, field in zip(species, line.rstrip("\n").split("\t")[1:]):
+                    for gene in filter(None, field.split(", ")):
+                        species_of[gene] = sp.replace(".", "_").replace(" ", "_")
+    path = os.path.join(folder, "Orthogroups", "Orthogroups.txt")
+    with open(path) as fh:
+        lines = fh.read().splitlines()
+    with open(path, "w") as fh:
+        for line in lines:
+            og, genes = line.split(":", 1)
+            fh.write(og + ": " + " ".join(species_of[g] + "_" + g for g in genes.split()) + "\n")
+
+
+def test_gene_names_shared_between_species(tmp_path):
+    # OrthoFinder 3.2 writes <species>_<gene> in Orthogroups.txt when two species share gene names.
+    # GLADE must read these and give the same output as with the plain names.
+    plain = make_example(tmp_path / "plain")
+    assert run_glade(plain).returncode == 0
+    folder = make_example(tmp_path / "prefixed")
+    prefix_orthogroups_txt(folder)
+    out = run_glade(folder)
+    assert out.returncode == 0, out.stdout + out.stderr
+    for name in ["Duplications.tsv", "Loss_speciation.tsv", "Loss_postduplication.tsv", "Gains.tsv",
+                 "Branch_statistics.tsv", "OrthogroupBranchChange.tsv"]:
+        with open(os.path.join(plain, "GainsLossDuplication", name)) as a, \
+             open(os.path.join(folder, "GainsLossDuplication", name)) as b:
+            assert a.read() == b.read(), name
+
+
 def test_species_tree_polytomy_stops_with_error(tmp_path):
     # a polytomy in the species tree made GLADE silently lose most
     # speciation losses (29 -> 6). GLADE should now stop with a clear message.
@@ -221,7 +258,9 @@ def test_output_files_where_readme_says(tmp_path):
 def test_version_flag():
     out = subprocess.run([sys.executable, GLADE, "--version"], capture_output=True, text=True)
     assert out.returncode == 0
-    assert "GLADE" in out.stdout and "1.0.0" in out.stdout
+    sys.path.insert(0, os.path.join(REPO, "scripts"))
+    from version import __version__
+    assert out.stdout.strip() == f"GLADE v{__version__}"
 
 
 def test_gene_tree_polytomy_small_example():

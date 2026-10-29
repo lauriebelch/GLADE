@@ -2,7 +2,7 @@
 
 GLADE: Accurate inference of orthogroup gains, gene losses, ancestral gene content, and gene duplication events for comparative genomics
 
-Current version: **v1.0.0** (see [CHANGELOG.md](CHANGELOG.md)). Check your version with `python scripts/GLADE.py --version`.
+Current version: **v1.0.1** (see [CHANGELOG.md](CHANGELOG.md)). Check your version with `python scripts/GLADE.py --version`.
 
 GLADE is a Python tool for reconstructing the full evolutionary history of orthogroups — including gene gains, losses, duplications, and ancestral gene sets — using only an OrthoFinder v3 results directory as input. GLADE maps every event onto the species tree and produces rich output for comparative genomics.
 
@@ -64,7 +64,7 @@ cd GLADE
 python scripts/GLADE.py --version
 ```
 
-This should print `GLADE v1.0.0`. You can then try GLADE on the [example data](#Example-data).
+This should print `GLADE v1.0.1`. You can then try GLADE on the [example data](#Example-data).
 
 If you are not using an OrthoFinder environment, install the dependencies with:
 
