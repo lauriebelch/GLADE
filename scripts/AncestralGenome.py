@@ -56,7 +56,7 @@ def load_gene_tree_from_big_file(og, tree_file_path):
 
 # For a given orthogroup + species-tree node, pick representative leaf genes
 # for that ancestral genome (numeric version).
-def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed=1, newick=None):
+def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed=1, newick=None, duplications=None):
     og = OG
     all_selected_sequences = []
 
@@ -92,8 +92,10 @@ def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, 
     leaves_to_stay = [all_leaves_nodes[i] for i in idx]
 
     # Identify duplications on the full gene_tree before pruning
-    duplications = FindDuplications(gene_tree, species_tree, species_names)
-    duplications = [d for d in duplications if d["support"] >= 0.5]
+    # (they don't depend on the node, so the caller can find them once per orthogroup and pass them in)
+    if duplications is None:
+        duplications = FindDuplications(gene_tree, species_tree, species_names)
+        duplications = [d for d in duplications if d["support"] >= 0.5]
 
     # Prune down to leaves in the target clade
     gene_tree.prune(leaves_to_stay, preserve_branch_length=True)
@@ -249,7 +251,7 @@ def MakeAncestralSpeciesFastaDict(all_nodes, fasta_folder):
 
 # Build a single ancestral genome FASTA text from selected genes
 def BuildAncestralGenome(species_list, gene_list, orthogroup_list, fasta_dicts, focal_node):
-    fasta_content = ""
+    fasta_lines = []
 
     # count genes per orthogroup
     og_counts = {}
@@ -271,9 +273,9 @@ def BuildAncestralGenome(species_list, gene_list, orthogroup_list, fasta_dicts, 
         seq = fasta_dicts[species_id][gene_id]
 
         header = f">{focal_node}_{orthogroup}_{gene_num}_{gene_num2}_{gene_id}\n"
-        fasta_content += header + seq + "\n"
+        fasta_lines.append(header + seq + "\n")
 
-    return fasta_content
+    return "".join(fasta_lines)
 
 
 def WriteAncestralFasta(focal_node, ancestral_genome, ortho_folder_path):
@@ -283,52 +285,75 @@ def WriteAncestralFasta(focal_node, ancestral_genome, ortho_folder_path):
     with open(output_fasta_path, "w") as fasta_file:
         fasta_file.write(ancestral_genome)
 
-# Wrapper for multiprocessing OG by OG processing
-def ProcessOrthogroupCurrent(index, gains_current, node, species_tree, ortho_folder_path, species_names, seed, newick):
-    OG = gains_current[index]["Orthogroup"]
-    return OG, GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, seed, newick)
+# Worker setup: each worker reads the species tree once
+_worker = {}
 
-# Build ancestral genome for a single node
-def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, seed=1, gene_trees=None):
-    focal_node = node.name
-    target_node = next(species_tree.search_nodes(name=focal_node))
+def InitWorker(species_tree_path, ortho_folder_path, seed):
+    with open(species_tree_path) as fh:
+        species_tree = ete4.Tree(fh, parser=1)
+    species_tree.name = "N0"
+    _worker["species_tree"] = species_tree
+    _worker["species_names"] = list(species_tree.leaf_names())
+    _worker["nodes"] = {n.name: n for n in species_tree.traverse()}
+    _worker["ortho_folder_path"] = ortho_folder_path
+    _worker["seed"] = seed
 
-    # ancestors (including focal node)
-    ancestors = [focal_node]
-    up = target_node.up
-    while up:
-        ancestors.append(up.name)
-        up = up.up
+# Representative genes of one orthogroup at every internal node at or below the node where it was gained.
+# The gene tree's duplications don't depend on the node, so they are found once here rather than once per node.
+def ProcessOrthogroup(task):
+    index, OG, node_names, newick = task
+    species_tree = _worker["species_tree"]
+    species_names = _worker["species_names"]
+    duplications = None
+    selected = {}
+    for node_name in node_names:
+        if duplications is None:
+            if newick is not None:
+                gene_tree = ete4.Tree(newick, parser=1)
+            else:
+                tree_file_path = os.path.join(
+                    _worker["ortho_folder_path"], "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt"
+                )
+                gene_tree = load_gene_tree_from_big_file(OG, tree_file_path)
+            gene_tree.name = "n0"
+            duplications = FindDuplications(gene_tree, species_tree, species_names)
+            duplications = [d for d in duplications if d["support"] >= 0.5]
+        result = GetAncestralGenes(OG, _worker["nodes"][node_name], species_tree, _worker["ortho_folder_path"],
+                                   species_names, _worker["seed"], newick, duplications)
+        if result is not None:
+            selected[node_name] = result
+    return index, selected
 
-    # gains whose Gain Node is on the path from root to this node
-    gains_current = [g for g in gains if g["Gain Node"] in ancestors]
+# Read species FASTAs only when first needed, and only once
+class SpeciesFastaCache(dict):
+    def __init__(self, ortho_folder_path):
+        super().__init__()
+        self.ortho_folder_path = ortho_folder_path
 
-    if not gains_current:
-        return  # no OGs gained on path → no ancestral genes to reconstruct
+    def __missing__(self, species_code):
+        fasta_dict = MakeAllSpeciesFastaDict([species_code], self.ortho_folder_path)[species_code]
+        self[species_code] = fasta_dict
+        return fasta_dict
 
-    # multiprocessing over orthogroups
-    n_threads = max(1, min(n_threads, cpu_count()))
-    with Pool(processes=n_threads) as pool:
-        results = pool.starmap(
-            ProcessOrthogroupCurrent,
-            [
-                (idx, gains_current, node, species_tree, ortho_folder_path, species_names, seed,
-                 gene_trees.get(gains_current[idx]["Orthogroup"]) if gene_trees else None)
-                for idx in range(len(gains_current))
-            ],
-        )
+    def __contains__(self, species_code):
+        if not dict.__contains__(self, species_code):
+            if not os.path.exists(os.path.join(self.ortho_folder_path, "WorkingDirectory", f"Species{species_code}.fa")):
+                return False
+            self[species_code]
+        return True
 
+# Write the ancestral gene set of one node (same output as reconstructing the node on its own)
+def WriteNodeGenome(focal_node, results, ortho_folder_path, fasta_cache):
+    # results: [(gains row index, selected genes)] for every orthogroup with genes at this node
+    if not results:
+        return
+    results.sort(key=lambda x: x[0])  # same order as the orthogroups in Gains.tsv
     ancestral_sequence = []
     orthogroup_names = []
-
-    for OG, result in results:
-        if result is not None:
-            ancestral_sequence.append(result)
-            # result is [ [gene1, gene2, ...] ], so result[0] is list of genes
-            orthogroup_names.extend([OG] * len(result[0]))
-
-    if not ancestral_sequence:
-        return
+    for OG, result in [(og, r) for _, (og, r) in results]:
+        ancestral_sequence.append(result)
+        # result is [ [gene1, gene2, ...] ], so result[0] is list of genes
+        orthogroup_names.extend([OG] * len(result[0]))
 
     # Flatten to 1D list of gene IDs
     ancestral_gene_ids = np.concatenate(ancestral_sequence, axis=None).ravel().tolist()
@@ -337,13 +362,8 @@ def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names,
     species = [g.split("_")[0] for g in ancestral_gene_ids]
     genes = [g for g in ancestral_gene_ids]
 
-    all_species = sorted(set(species))
-
-    # Build dictionary of all species FASTAs
-    all_fasta_dicts = MakeAllSpeciesFastaDict(all_species, ortho_folder_path)
-
     # Build ancestral genome FASTA content and write to disk
-    ancestral_genome = BuildAncestralGenome(species, genes, orthogroup_names, all_fasta_dicts, focal_node)
+    ancestral_genome = BuildAncestralGenome(species, genes, orthogroup_names, fasta_cache, focal_node)
     WriteAncestralFasta(focal_node, ancestral_genome, ortho_folder_path)
 
 def main(ortho_folder_path, n_threads, seed=1):
@@ -379,13 +399,34 @@ def main(ortho_folder_path, n_threads, seed=1):
                 og, newick = line.split(":", 1)
                 gene_trees[og.strip()] = newick.strip()
 
-    # Reconstruct ancestral genome for every internal node
-    node_list = []
-    for node in species_tree.traverse("postorder"):
-        if node.is_leaf:
-            continue
-        AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, seed, gene_trees)
-        node_list.append(node.name)
+    # Reconstruct ancestral genome for every internal node.
+    # Each orthogroup is processed once, for every internal node at or below the node where it was gained
+    # (these are the nodes whose path to the root includes the gain node).
+    node_list = [node.name for node in species_tree.traverse("postorder") if not node.is_leaf]
+    internal_below = {
+        node.name: [n.name for n in node.traverse("postorder") if not n.is_leaf]
+        for node in species_tree.traverse() if not node.is_leaf
+    }
+    tasks = []
+    for index, g in enumerate(gains):
+        node_names = internal_below.get(g["Gain Node"])
+        if node_names:
+            tasks.append((index, g["Orthogroup"], node_names, gene_trees.get(g["Orthogroup"]) if gene_trees else None))
+    # largest jobs first, so no worker is left with a big orthogroup at the end
+    tasks.sort(key=lambda t: len(t[3] or "") * len(t[2]), reverse=True)
+
+    node_results = {name: [] for name in node_list}
+    n_threads = max(1, min(n_threads, cpu_count()))
+    with Pool(processes=n_threads, initializer=InitWorker,
+              initargs=(species_tree_path, ortho_folder_path, seed)) as pool:
+        for index, selected in pool.imap_unordered(ProcessOrthogroup, tasks, chunksize=1):
+            OG = gains[index]["Orthogroup"]
+            for node_name, result in selected.items():
+                node_results[node_name].append((index, (OG, result)))
+
+    fasta_cache = SpeciesFastaCache(ortho_folder_path)
+    for node_name in node_list:
+        WriteNodeGenome(node_name, node_results.pop(node_name), ortho_folder_path, fasta_cache)
 
     # Summaries from ancestral FASTAs
     fasta_folder = os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/AncestralGenomes")

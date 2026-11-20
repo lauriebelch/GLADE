@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.0 (2026)
+
+- Faster reconstruction of ancestral gene sets, with identical output. Each orthogroup is now processed once for all the nodes where it is present, instead of once per node: the duplications in its gene tree are found once (they don't depend on the node), and only the gene tree and node names are sent to each worker. Species FASTA files are read once, instead of once per node
+- On 640 vertebrates (32 threads), GLADE took 2 hours 37 minutes instead of 75 hours 32 minutes. The output was identical to v1.0.0 on these datasets, on the 79 mammals and on the paper's two simulated datasets
+
 ## v1.0.1 (2026)
 
 - Fixed: GLADE stopped with "Gene ... not found in SequenceIDs" when two species have genes of the same name. OrthoFinder 3.2 then writes every gene in `Orthogroups.txt` as `<species>_<gene>`, and GLADE now reads these names. Output is unchanged for runs that v1.0.0 completed

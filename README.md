@@ -2,7 +2,7 @@
 
 GLADE: Accurate inference of orthogroup gains, gene losses, ancestral gene content, and gene duplication events for comparative genomics
 
-Current version: **v1.0.1** (see [CHANGELOG.md](CHANGELOG.md)). Check your version with `python scripts/GLADE.py --version`.
+Current version: **v1.1.0** (see [CHANGELOG.md](CHANGELOG.md)). Check your version with `python scripts/GLADE.py --version`.
 
 GLADE is a Python tool for reconstructing the full evolutionary history of orthogroups — including gene gains, losses, duplications, and ancestral gene sets — using only an OrthoFinder v3 results directory as input. GLADE maps every event onto the species tree and produces rich output for comparative genomics.
 
@@ -64,7 +64,7 @@ cd GLADE
 python scripts/GLADE.py --version
 ```
 
-This should print `GLADE v1.0.1`. You can then try GLADE on the [example data](#Example-data).
+This should print `GLADE v1.1.0`. You can then try GLADE on the [example data](#Example-data).
 
 If you are not using an OrthoFinder environment, install the dependencies with:
 
@@ -72,7 +72,7 @@ If you are not using an OrthoFinder environment, install the dependencies with:
 pip install -r requirements.txt
 ```
 
-GLADE runs on a laptop, desktop or server and does not need a cluster. As a guide, with 32 threads GLADE took 20 minutes and 13.3 GB of memory for 79 mammal proteomes, and 1 hour 4 minutes and 32.6 GB for 200 species (100 mammals and 100 budding yeasts).
+GLADE runs on a laptop, desktop or server and does not need a cluster. As a guide, with 32 threads GLADE v1.1.0 took 7 minutes and 14.6 GB of memory for 79 mammal proteomes, and 17 minutes, 44 minutes, 1 hour 15 minutes and 2 hours 37 minutes for 128, 256, 384 and 640 vertebrate proteomes (peak memory 30, 73, 124 and 194 GB). Datasets of several hundred species therefore need a server.
 
 ## Simple usage
 
@@ -134,7 +134,7 @@ These are ancestral gene sets: for each internal node of the species tree, the g
 
 - Each run writes `GLADE_run_info.txt` with the GLADE version, the command, the seed and the number of threads
 - Choosing which genes represent a duplicated orthogroup in the ancestral gene sets involves a random choice. This is seeded with `--seed`, so the same input and seed give identical output (whatever the number of threads)
-- Tagged releases are on GitHub. Version 1.0.0, used in the paper, is also archived on figshare (DOI: 10.6084/m9.figshare.31158355)
+- Tagged releases are on GitHub. Version 1.0.0, used for the analyses in the paper, and version 1.1.0, used for its run times, are also archived on figshare (DOI: 10.6084/m9.figshare.31158355)
 
 ## Example data
 
